@@ -14,7 +14,7 @@ const FEATURES = [
 
 export default function CreateBatch() {
   const navigate = useNavigate()
-  const [form,    setForm]    = useState({ name: '', product_name: '' })
+  const [form,    setForm]    = useState({ name: '', product_name: '', qr_count: '500' })
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
   const [done,    setDone]    = useState(null)
@@ -30,7 +30,7 @@ export default function CreateBatch() {
     if (!form.product_name.trim()) return setError('Product name is required')
     setLoading(true)
     try {
-      const res = await api.post('/batch/create', form)
+      const res = await api.post('/batch/create', { ...form, qr_count: parseInt(form.qr_count) || 500 })
       setDone({ id: res.batch.id, batch_code: res.batch.batch_code })
     } catch (err) {
       setError(err.error || 'Failed to create batch')
@@ -157,6 +157,24 @@ export default function CreateBatch() {
                          rounded-xl px-4 py-3 text-sm transition-all input-focus focus:outline-none"
             />
             <p className="text-[10px] text-slate-600 mt-1.5 font-mono">Used in product-wise spending reports</p>
+          </div>
+
+          {/* QR Count */}
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-2">
+              Number of QR Codes
+            </label>
+            <input
+              name="qr_count"
+              type="number"
+              value={form.qr_count}
+              onChange={handleChange}
+              min={50} max={5000}
+              placeholder="500"
+              className="w-full bg-[#0c1422] border border-[#1c2d42] text-white placeholder-slate-600
+                         rounded-xl px-4 py-3 text-sm transition-all input-focus focus:outline-none"
+            />
+            <p className="text-[10px] text-slate-600 mt-1.5 font-mono">50–5,000 QRs per batch</p>
           </div>
 
           {/* What gets created */}

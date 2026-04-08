@@ -11,7 +11,7 @@ const { debitAdminWallet } = require('./walletService')
 async function checkQR(qrId) {
   const res = await pool.query(`
     SELECT q.*, b.status AS batch_status, b.name AS batch_name,
-           b.product_name, b.batch_code, b.id AS batch_uuid
+           b.product_name, b.batch_code, b.id AS batch_uuid, b.org_id
     FROM qr_codes q
     JOIN batches b ON q.batch_id = b.id
     WHERE q.id = $1
@@ -31,13 +31,17 @@ async function checkQR(qrId) {
     return { valid: false, error: 'BATCH_PAUSED', message: 'This offer is currently paused. Please try again later.' }
   }
 
+  // Check org suspension
+  const orgRes = await pool.query(
+    'SELECT status FROM organizations WHERE id = $1', [qr.org_id]
+  )
+  if (orgRes.rows[0]?.status === 'suspended') {
+    return { valid: false, error: 'ORG_SUSPENDED', message: 'This offer is not available at this time.' }
+  }
+
   const now = new Date()
   if (qr.expires_at && new Date(qr.expires_at) < now) {
-    return {
-      valid: false, error: 'QR_EXPIRED',
-      message: 'This QR code has expired',
-      expiresAt: qr.expires_at,
-    }
+    return { valid: false, error: 'QR_EXPIRED', message: 'This QR code has expired', expiresAt: qr.expires_at }
   }
 
   const usedStatuses = ['scanning', 'redeemed', 'wallet_credited', 'pending_reason']
@@ -55,7 +59,6 @@ async function checkQR(qrId) {
  * @returns {Promise<{sessionId: string}>}
  */
 async function sendOTP(mobile, qrId) {
-  // Invalidate any existing sessions for this mobile + QR
   await pool.query(
     'UPDATE otp_sessions SET verified = TRUE WHERE mobile = $1 AND qr_id = $2 AND verified = FALSE',
     [mobile, qrId]
@@ -74,7 +77,7 @@ async function sendOTP(mobile, qrId) {
 }
 
 /**
- * Verifies the OTP and creates/returns the user profile
+ * Verifies the OTP and creates/returns the user profile (global user)
  * @param {string} mobile
  * @param {string} otp
  * @param {string} qrId
@@ -90,49 +93,36 @@ async function verifyOTP(mobile, otp, qrId) {
   if (!sessionRes.rows.length) throw new Error('No active OTP session found')
 
   const session = sessionRes.rows[0]
-
-  if (new Date(session.expires_at) < new Date()) {
-    throw new Error('OTP has expired. Please request a new one.')
-  }
-
-  if (session.attempts >= 3) {
-    throw new Error('Too many incorrect attempts. Please request a new OTP.')
-  }
+  if (new Date(session.expires_at) < new Date()) throw new Error('OTP has expired. Please request a new one.')
+  if (session.attempts >= 3) throw new Error('Too many incorrect attempts. Please request a new OTP.')
 
   if (session.otp !== otp) {
-    await pool.query(
-      'UPDATE otp_sessions SET attempts = attempts + 1 WHERE id = $1', [session.id]
-    )
+    await pool.query('UPDATE otp_sessions SET attempts = attempts + 1 WHERE id = $1', [session.id])
     const remaining = 3 - (session.attempts + 1)
     throw new Error(`Incorrect OTP. ${remaining} attempt(s) remaining.`)
   }
 
-  // Mark session as verified
   await pool.query('UPDATE otp_sessions SET verified = TRUE WHERE id = $1', [session.id])
 
-  // Create or fetch user
-  const userRes = await pool.query(`
+  // Global user — upsert by mobile only
+  await pool.query(`
     INSERT INTO users (mobile) VALUES ($1)
-    ON CONFLICT (mobile) DO UPDATE SET mobile = EXCLUDED.mobile
-    RETURNING id, name, upi_id, (registered_at = NOW()) AS is_new
+    ON CONFLICT (mobile) DO NOTHING
   `, [mobile])
 
-  // Re-fetch cleanly to get is_new flag properly
   const existing = await pool.query('SELECT * FROM users WHERE mobile = $1', [mobile])
   const user = existing.rows[0]
-  const isNew = !user.name
 
-  return { userId: user.id, isNew, savedUpiId: user.upi_id, name: user.name }
+  return { userId: user.id, isNew: !user.name, savedUpiId: user.upi_id, name: user.name }
 }
 
 /**
- * Confirms the scan — debits admin wallet and marks QR as scanning
- * Called after name entry + scan again confirmation
+ * Confirms the scan — debits org wallet and marks QR as scanning
  * @param {string} qrId
  * @param {string} userId
  * @param {string} userName
  * @param {string} userMobile
- * @returns {Promise<{amount: number}>}
+ * @returns {Promise<{amount: number, batchId: string, batchCode: string, productName: string}>}
  */
 async function confirmScan(qrId, userId, userName, userMobile) {
   const client = await pool.connect()
@@ -140,27 +130,25 @@ async function confirmScan(qrId, userId, userName, userMobile) {
     await client.query('BEGIN')
 
     const qrRes = await client.query(`
-      SELECT q.*, b.id AS batch_uuid, b.batch_code, b.product_name
+      SELECT q.*, b.id AS batch_uuid, b.batch_code, b.product_name, b.org_id
       FROM qr_codes q
       JOIN batches b ON q.batch_id = b.id
-      WHERE q.id = $1 AND q.status = $2
+      WHERE q.id = $1 AND q.status = 'funded'
       FOR UPDATE OF q
-    `, [qrId, 'funded'])
+    `, [qrId])
     if (!qrRes.rows.length) throw new Error('QR is no longer available for scanning')
 
     const qr = qrRes.rows[0]
 
-    // Debit admin wallet atomically
-    await debitAdminWallet(client, parseFloat(qr.amount), qrId, qr.batch_id)
+    // Debit the org's wallet (not global admin_wallet)
+    await debitAdminWallet(client, qr.org_id, parseFloat(qr.amount), qrId, qr.batch_id)
 
-    // Update QR to scanning state
     await client.query(`
       UPDATE qr_codes
       SET status = 'scanning', scanned_at = NOW(), user_name = $1, user_mobile = $2
       WHERE id = $3
     `, [userName, userMobile, qrId])
 
-    // Update user name if changed
     await client.query(
       'UPDATE users SET name = $1, total_scans = total_scans + 1, last_scan_at = NOW() WHERE id = $2',
       [userName, userId]
@@ -207,9 +195,7 @@ async function submitRedemption(qrId, userId, action, data) {
     if (action === 'redeemed') {
       txnId = `TXN${Date.now()}`
       await client.query(`
-        UPDATE qr_codes
-        SET status = 'redeemed', upi_id = $1, redeemed_at = NOW(), txn_id = $2
-        WHERE id = $3
+        UPDATE qr_codes SET status = 'redeemed', upi_id = $1, redeemed_at = NOW(), txn_id = $2 WHERE id = $3
       `, [data.upiId, txnId, qrId])
 
       await client.query(`
@@ -219,9 +205,7 @@ async function submitRedemption(qrId, userId, action, data) {
       `, [amount, data.upiId, userId])
 
     } else if (action === 'wallet_credited') {
-      await client.query(
-        'UPDATE qr_codes SET status = $1 WHERE id = $2', ['wallet_credited', qrId]
-      )
+      await client.query('UPDATE qr_codes SET status = $1 WHERE id = $2', ['wallet_credited', qrId])
 
       const userRes = await client.query(`
         UPDATE users
@@ -230,7 +214,6 @@ async function submitRedemption(qrId, userId, action, data) {
             total_wallet_in = total_wallet_in + $1
         WHERE id = $2 RETURNING wallet_balance
       `, [amount, userId])
-
       walletBalance = parseFloat(userRes.rows[0].wallet_balance)
 
       await client.query(`
@@ -239,22 +222,15 @@ async function submitRedemption(qrId, userId, action, data) {
       `, [userId, amount, qrId, data.batchCode, data.productName])
 
     } else if (action === 'pending_reason') {
-      await client.query(
-        'UPDATE qr_codes SET status = $1, reason = $2 WHERE id = $3',
-        ['pending_reason', data.reason, qrId]
-      )
-      await client.query(
-        'UPDATE users SET total_pending = total_pending + 1 WHERE id = $1', [userId]
-      )
+      await client.query('UPDATE qr_codes SET status = $1, reason = $2 WHERE id = $3', ['pending_reason', data.reason, qrId])
+      await client.query('UPDATE users SET total_pending = total_pending + 1 WHERE id = $1', [userId])
     }
 
-    // Append-only scan history record
     await client.query(`
       INSERT INTO scan_history
         (user_id, qr_id, batch_id, batch_code, product_name, amount, action, upi_id, reason, txn_id)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    `, [userId, qrId, data.batchId, data.batchCode, data.productName,
-        amount, action, data.upiId || null, data.reason || null, txnId])
+    `, [userId, qrId, data.batchId, data.batchCode, data.productName, amount, action, data.upiId || null, data.reason || null, txnId])
 
     await client.query('COMMIT')
     return { txnId, walletBalance, amount }

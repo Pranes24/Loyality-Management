@@ -2,37 +2,42 @@
 const pool = require('../db/pool')
 
 /**
- * Returns paginated user list with search and sort
+ * Returns paginated list of users who have scanned in the org
+ * @param {string} orgId
  * @param {Object} opts - { search, sortBy, page, limit, dateFrom, dateTo }
  * @returns {Promise<{users: Array, total: number}>}
  */
-async function getUsers({ search, sortBy = 'registered_at', page = 1, limit = 20, dateFrom, dateTo } = {}) {
+async function getUsers(orgId, { search, sortBy = 'registered_at', page = 1, limit = 20, dateFrom, dateTo } = {}) {
   const allowed = ['registered_at', 'last_scan_at', 'total_earned', 'total_scans', 'wallet_balance']
   const orderBy = allowed.includes(sortBy) ? sortBy : 'registered_at'
 
-  const conditions = []
-  const params = []
-  let idx = 1
+  const conditions = [`EXISTS (
+    SELECT 1 FROM scan_history sh
+    JOIN batches b ON sh.batch_id = b.id
+    WHERE sh.user_id = u.id AND b.org_id = $1
+  )`]
+  const params = [orgId]
+  let idx = 2
 
   if (search) {
-    conditions.push(`(mobile ILIKE $${idx} OR name ILIKE $${idx})`)
+    conditions.push(`(u.mobile ILIKE $${idx} OR u.name ILIKE $${idx})`)
     params.push(`%${search}%`); idx++
   }
-  if (dateFrom) { conditions.push(`registered_at >= $${idx++}`); params.push(dateFrom) }
-  if (dateTo)   { conditions.push(`registered_at <= $${idx++}`); params.push(dateTo) }
+  if (dateFrom) { conditions.push(`u.registered_at >= $${idx++}`); params.push(dateFrom) }
+  if (dateTo)   { conditions.push(`u.registered_at <= $${idx++}`); params.push(dateTo) }
 
-  const where  = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  const where  = `WHERE ${conditions.join(' AND ')}`
   const offset = (page - 1) * limit
 
   const [dataRes, countRes] = await Promise.all([
     pool.query(`
-      SELECT id, mobile, name, wallet_balance, total_scans, total_redeemed,
-             total_wallet_credits, total_pending, total_earned, registered_at, last_scan_at
-      FROM users ${where}
-      ORDER BY ${orderBy} DESC NULLS LAST
+      SELECT u.id, u.mobile, u.name, u.wallet_balance, u.total_scans, u.total_redeemed,
+             u.total_wallet_credits, u.total_pending, u.total_earned, u.registered_at, u.last_scan_at
+      FROM users u ${where}
+      ORDER BY u.${orderBy} DESC NULLS LAST
       LIMIT $${idx} OFFSET $${idx + 1}
     `, [...params, limit, offset]),
-    pool.query(`SELECT COUNT(*) FROM users ${where}`, params),
+    pool.query(`SELECT COUNT(*) FROM users u ${where}`, params),
   ])
 
   return { users: dataRes.rows, total: parseInt(countRes.rows[0].count) }
@@ -49,23 +54,29 @@ async function getUserById(userId) {
 }
 
 /**
- * Returns full scan history for a user
+ * Returns scan history for a user (optionally scoped to org's batches)
  * @param {string} userId
+ * @param {string} orgId
  * @param {Object} opts - { page, limit }
  * @returns {Promise<{history: Array, total: number}>}
  */
-async function getScanHistory(userId, { page = 1, limit = 20 } = {}) {
+async function getScanHistory(userId, orgId, { page = 1, limit = 20 } = {}) {
   const offset = (page - 1) * limit
   const [dataRes, countRes] = await Promise.all([
     pool.query(`
       SELECT sh.*, q.amount AS qr_amount
       FROM scan_history sh
       LEFT JOIN qr_codes q ON sh.qr_id = q.id
-      WHERE sh.user_id = $1
+      JOIN batches b ON sh.batch_id = b.id
+      WHERE sh.user_id = $1 AND b.org_id = $2
       ORDER BY sh.scanned_at DESC
-      LIMIT $2 OFFSET $3
-    `, [userId, limit, offset]),
-    pool.query('SELECT COUNT(*) FROM scan_history WHERE user_id = $1', [userId]),
+      LIMIT $3 OFFSET $4
+    `, [userId, orgId, limit, offset]),
+    pool.query(`
+      SELECT COUNT(*) FROM scan_history sh
+      JOIN batches b ON sh.batch_id = b.id
+      WHERE sh.user_id = $1 AND b.org_id = $2
+    `, [userId, orgId]),
   ])
   return { history: dataRes.rows, total: parseInt(countRes.rows[0].count) }
 }
@@ -83,10 +94,10 @@ async function getUserWallet(mobile) {
   if (!userRes.rows.length) throw new Error('User not found')
   const user = userRes.rows[0]
 
-  const txnRes = await pool.query(`
-    SELECT * FROM user_wallet_transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50
-  `, [user.id])
-
+  const txnRes = await pool.query(
+    'SELECT * FROM user_wallet_transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+    [user.id]
+  )
   return { ...user, transactions: txnRes.rows }
 }
 
@@ -102,9 +113,7 @@ async function withdrawFromWallet(mobile, upiId, amount) {
   try {
     await client.query('BEGIN')
 
-    const userRes = await client.query(
-      'SELECT * FROM users WHERE mobile = $1 FOR UPDATE', [mobile]
-    )
+    const userRes = await client.query('SELECT * FROM users WHERE mobile = $1 FOR UPDATE', [mobile])
     if (!userRes.rows.length) throw new Error('User not found')
 
     const user    = userRes.rows[0]
@@ -117,8 +126,7 @@ async function withdrawFromWallet(mobile, upiId, amount) {
 
     const updatedRes = await client.query(`
       UPDATE users
-      SET wallet_balance   = wallet_balance - $1,
-          total_wallet_out = total_wallet_out + $1
+      SET wallet_balance = wallet_balance - $1, total_wallet_out = total_wallet_out + $1
       WHERE id = $2 RETURNING wallet_balance
     `, [amount, user.id])
 
@@ -138,16 +146,23 @@ async function withdrawFromWallet(mobile, upiId, amount) {
 }
 
 /**
- * Returns top users ranked by total_earned or total_scans
+ * Returns top users ranked by total_earned or total_scans (org-scoped)
+ * @param {string} orgId
  * @param {'total_earned'|'total_scans'} rankBy
  * @returns {Promise<Array>}
  */
-async function getTopUsers(rankBy = 'total_earned') {
+async function getTopUsers(orgId, rankBy = 'total_earned') {
   const col = rankBy === 'total_scans' ? 'total_scans' : 'total_earned'
   const res = await pool.query(`
-    SELECT id, mobile, name, total_scans, total_redeemed, total_earned, wallet_balance
-    FROM users ORDER BY ${col} DESC NULLS LAST LIMIT 20
-  `)
+    SELECT u.id, u.mobile, u.name, u.total_scans, u.total_redeemed, u.total_earned, u.wallet_balance
+    FROM users u
+    WHERE EXISTS (
+      SELECT 1 FROM scan_history sh
+      JOIN batches b ON sh.batch_id = b.id
+      WHERE sh.user_id = u.id AND b.org_id = $1
+    )
+    ORDER BY u.${col} DESC NULLS LAST LIMIT 20
+  `, [orgId])
   return res.rows
 }
 

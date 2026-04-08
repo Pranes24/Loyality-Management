@@ -1,36 +1,39 @@
-// Business logic for admin wallet — balance, top-up, transaction history
+// Business logic for org wallet — balance, top-up, transaction history
 const pool = require('../db/pool')
 
 /**
- * Returns the admin wallet balance and summary
+ * Returns the org wallet balance
+ * @param {string} orgId
  * @returns {Promise<Object>}
  */
-async function getAdminWallet() {
-  const res = await pool.query('SELECT * FROM admin_wallet WHERE id = 1')
-  return res.rows[0]
+async function getAdminWallet(orgId) {
+  const res = await pool.query('SELECT * FROM org_wallets WHERE org_id = $1', [orgId])
+  return res.rows[0] || { org_id: orgId, balance: 0, total_funded: 0, total_debited: 0 }
 }
 
 /**
- * Adds funds to the admin wallet
+ * Adds funds to the org wallet
+ * @param {string} orgId
  * @param {number} amount
  * @param {string} note
  * @returns {Promise<Object>} updated wallet
  */
-async function topupWallet(amount, note = 'Manual top-up') {
+async function topupWallet(orgId, amount, note = 'Manual top-up') {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
 
     const updated = await client.query(`
-      UPDATE admin_wallet
+      UPDATE org_wallets
       SET balance = balance + $1, total_funded = total_funded + $1, updated_at = NOW()
-      WHERE id = 1 RETURNING *
-    `, [amount])
+      WHERE org_id = $2 RETURNING *
+    `, [amount, orgId])
+    if (!updated.rows.length) throw new Error('Org wallet not found')
 
     await client.query(`
-      INSERT INTO wallet_transactions (type, amount, note)
-      VALUES ('credit', $1, $2)
-    `, [amount, note])
+      INSERT INTO wallet_transactions (type, amount, note, org_id)
+      VALUES ('credit', $1, $2, $3)
+    `, [amount, note, orgId])
 
     await client.query('COMMIT')
     return updated.rows[0]
@@ -43,20 +46,21 @@ async function topupWallet(amount, note = 'Manual top-up') {
 }
 
 /**
- * Returns admin wallet transaction history with filters
+ * Returns org wallet transaction history with filters
+ * @param {string} orgId
  * @param {Object} filters - { type, dateFrom, dateTo, page, limit }
  * @returns {Promise<{transactions: Array, total: number}>}
  */
-async function getWalletTransactions({ type, dateFrom, dateTo, page = 1, limit = 20 } = {}) {
-  const conditions = []
-  const params = []
-  let idx = 1
+async function getWalletTransactions(orgId, { type, dateFrom, dateTo, page = 1, limit = 20 } = {}) {
+  const conditions = ['wt.org_id = $1']
+  const params     = [orgId]
+  let idx = 2
 
-  if (type)     { conditions.push(`type = $${idx++}`);        params.push(type) }
-  if (dateFrom) { conditions.push(`created_at >= $${idx++}`); params.push(dateFrom) }
-  if (dateTo)   { conditions.push(`created_at <= $${idx++}`); params.push(dateTo) }
+  if (type)     { conditions.push(`wt.type = $${idx++}`);        params.push(type) }
+  if (dateFrom) { conditions.push(`wt.created_at >= $${idx++}`); params.push(dateFrom) }
+  if (dateTo)   { conditions.push(`wt.created_at <= $${idx++}`); params.push(dateTo) }
 
-  const where  = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+  const where  = `WHERE ${conditions.join(' AND ')}`
   const offset = (page - 1) * limit
 
   const [dataRes, countRes, sumRes] = await Promise.all([
@@ -68,12 +72,12 @@ async function getWalletTransactions({ type, dateFrom, dateTo, page = 1, limit =
       ORDER BY wt.created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
     `, [...params, limit, offset]),
-    pool.query(`SELECT COUNT(*) FROM wallet_transactions ${where}`, params),
+    pool.query(`SELECT COUNT(*) FROM wallet_transactions wt ${where}`, params),
     pool.query(`
       SELECT
-        COALESCE(SUM(amount) FILTER (WHERE type = 'credit'), 0)  AS total_credits,
-        COALESCE(SUM(amount) FILTER (WHERE type = 'debit'),  0)  AS total_debits
-      FROM wallet_transactions ${where}
+        COALESCE(SUM(wt.amount) FILTER (WHERE wt.type = 'credit'), 0) AS total_credits,
+        COALESCE(SUM(wt.amount) FILTER (WHERE wt.type = 'debit'),  0) AS total_debits
+      FROM wallet_transactions wt ${where}
     `, params),
   ])
 
@@ -85,29 +89,31 @@ async function getWalletTransactions({ type, dateFrom, dateTo, page = 1, limit =
 }
 
 /**
- * Debits the admin wallet — called atomically from redeemService
- * Expects an active pg client (part of a larger transaction)
+ * Debits the org wallet atomically — called from redeemService inside a transaction
  * @param {import('pg').PoolClient} client
+ * @param {string} orgId
  * @param {number} amount
  * @param {string} qrId
  * @param {string} batchId
  */
-async function debitAdminWallet(client, amount, qrId, batchId) {
-  const walletRes = await client.query('SELECT balance FROM admin_wallet WHERE id = 1 FOR UPDATE')
+async function debitAdminWallet(client, orgId, amount, qrId, batchId) {
+  const walletRes = await client.query(
+    'SELECT balance FROM org_wallets WHERE org_id = $1 FOR UPDATE', [orgId]
+  )
+  if (!walletRes.rows.length) throw new Error('Org wallet not found')
   const balance = parseFloat(walletRes.rows[0].balance)
-
   if (balance < amount) throw new Error('Insufficient wallet balance')
 
   await client.query(`
-    UPDATE admin_wallet
+    UPDATE org_wallets
     SET balance = balance - $1, total_debited = total_debited + $1, updated_at = NOW()
-    WHERE id = 1
-  `, [amount])
+    WHERE org_id = $2
+  `, [amount, orgId])
 
   await client.query(`
-    INSERT INTO wallet_transactions (type, amount, qr_id, batch_id, note)
-    VALUES ('debit', $1, $2, $3, 'QR scan debit')
-  `, [amount, qrId, batchId])
+    INSERT INTO wallet_transactions (type, amount, qr_id, batch_id, note, org_id)
+    VALUES ('debit', $1, $2, $3, 'QR scan debit', $4)
+  `, [amount, qrId, batchId, orgId])
 }
 
 module.exports = { getAdminWallet, topupWallet, getWalletTransactions, debitAdminWallet }

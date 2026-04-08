@@ -1,10 +1,11 @@
 // Admin sidebar navigation — dark command center with amber glow accents
 import React, { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, PackagePlus, Layers, Users,
-  Wallet, Menu, X, QrCode, Zap, ChevronRight
+  Wallet, Menu, X, QrCode, Zap, ChevronRight, LogOut
 } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext'
 
 const NAV_SECTIONS = [
   {
@@ -26,6 +27,13 @@ const NAV_SECTIONS = [
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+
+  function handleLogout() {
+    logout()
+    navigate('/login')
+  }
 
   return (
     <>
@@ -140,11 +148,22 @@ export default function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-[#1c2d42]/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400" style={{ boxShadow: '0 0 5px rgba(74,222,128,0.8)' }} />
-            <p className="text-[10px] text-slate-600 font-mono">v1.0 · POC Build</p>
-            <Zap size={10} className="text-amber-500/40 ml-auto" />
+        <div className="px-5 py-4 border-t border-[#1c2d42]/60 space-y-2">
+          {user && (
+            <div>
+              <p className="text-[10px] font-mono text-amber-400/80 truncate">{user.orgCode || user.orgName}</p>
+              <p className="text-[10px] text-slate-600 font-mono truncate">{user.email}</p>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400" style={{ boxShadow: '0 0 5px rgba(74,222,128,0.8)' }} />
+              <p className="text-[10px] text-slate-600 font-mono">Online</p>
+            </div>
+            <button onClick={handleLogout}
+              className="flex items-center gap-1.5 text-[10px] text-slate-600 hover:text-red-400 transition-colors font-mono">
+              <LogOut size={11} /> Sign out
+            </button>
           </div>
         </div>
       </aside>

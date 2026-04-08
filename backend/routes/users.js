@@ -1,12 +1,15 @@
 // Thin HTTP layer for user management and reports
 const express = require('express')
 const router  = express.Router()
-const svc     = require('../services/userService')
+const { requireOrgAdmin } = require('../middleware/auth')
+const svc = require('../services/userService')
+
+router.use(requireOrgAdmin)
 
 // GET /api/users/list
 router.get('/list', async (req, res) => {
   const { search, sortBy, page, limit, dateFrom, dateTo } = req.query
-  const result = await svc.getUsers({
+  const result = await svc.getUsers(req.orgId, {
     search, sortBy,
     page:  parseInt(page)  || 1,
     limit: parseInt(limit) || 20,
@@ -18,7 +21,7 @@ router.get('/list', async (req, res) => {
 // GET /api/users/top
 router.get('/top', async (req, res) => {
   const { rankBy } = req.query
-  const users = await svc.getTopUsers(rankBy)
+  const users = await svc.getTopUsers(req.orgId, rankBy)
   res.json({ users })
 })
 
@@ -26,7 +29,7 @@ router.get('/top', async (req, res) => {
 router.get('/search', async (req, res) => {
   const { q } = req.query
   if (!q) return res.status(400).json({ error: 'q (search term) is required' })
-  const result = await svc.getUsers({ search: q, limit: 10 })
+  const result = await svc.getUsers(req.orgId, { search: q, limit: 10 })
   res.json(result)
 })
 
@@ -40,7 +43,7 @@ router.get('/:id', async (req, res) => {
 // GET /api/users/:id/history
 router.get('/:id/history', async (req, res) => {
   const { page, limit } = req.query
-  const result = await svc.getScanHistory(req.params.id, {
+  const result = await svc.getScanHistory(req.params.id, req.orgId, {
     page:  parseInt(page)  || 1,
     limit: parseInt(limit) || 20,
   })
