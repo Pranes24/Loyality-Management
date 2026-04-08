@@ -1,7 +1,7 @@
 // Individual user profile — big avatar, stats, scan history, wallet tabs
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, Wallet, QrCode, TrendingUp, Calendar } from 'lucide-react'
+import { ArrowLeft, Wallet, QrCode, TrendingUp, Calendar, CheckCircle2, Clock, PiggyBank } from 'lucide-react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import StatusBadge from '../../components/admin/StatusBadge'
 import api         from '../../lib/api'
@@ -10,11 +10,11 @@ function fmtRs(n)   { return `₹${Number(n || 0).toLocaleString('en-IN', { mini
 function fmtDate(d) { return d ? new Date(d).toLocaleString('en-IN') : '—' }
 
 const AVATAR_PALETTES = [
-  { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b', ring: 'rgba(245,158,11,0.3)' },
-  { bg: 'rgba(34,211,238,0.12)', text: '#22d3ee', ring: 'rgba(34,211,238,0.3)' },
-  { bg: 'rgba(167,139,250,0.15)',text: '#a78bfa', ring: 'rgba(167,139,250,0.3)'},
-  { bg: 'rgba(52,211,153,0.15)', text: '#34d399', ring: 'rgba(52,211,153,0.3)' },
-  { bg: 'rgba(251,146,60,0.15)', text: '#fb923c', ring: 'rgba(251,146,60,0.3)' },
+  { bg: 'rgba(245,158,11,0.18)', text: '#f59e0b', ring: 'rgba(245,158,11,0.35)', glow: 'rgba(245,158,11,0.15)' },
+  { bg: 'rgba(34,211,238,0.14)', text: '#22d3ee', ring: 'rgba(34,211,238,0.35)', glow: 'rgba(34,211,238,0.12)' },
+  { bg: 'rgba(167,139,250,0.18)',text: '#a78bfa', ring: 'rgba(167,139,250,0.35)',glow: 'rgba(167,139,250,0.12)'},
+  { bg: 'rgba(52,211,153,0.18)', text: '#34d399', ring: 'rgba(52,211,153,0.35)', glow: 'rgba(52,211,153,0.12)' },
+  { bg: 'rgba(251,146,60,0.18)', text: '#fb923c', ring: 'rgba(251,146,60,0.35)', glow: 'rgba(251,146,60,0.12)' },
 ]
 function avatarP(str) {
   let h = 0
@@ -70,34 +70,36 @@ export default function UserDetail() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6 float-in">
         <button onClick={() => navigate('/admin/users')}
-          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1c2d42] transition-all">
+          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#1c2d42] transition-all flex-shrink-0">
           <ArrowLeft size={18} />
         </button>
-        <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-center gap-4 flex-1 min-w-0">
           {/* Big avatar */}
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-barlow font-black flex-shrink-0"
-               style={{ background: palette.bg, color: palette.text, boxShadow: `0 0 0 2px ${palette.ring}` }}>
-            {name[0].toUpperCase()}
+          <div className="relative flex-shrink-0">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-barlow font-black"
+                 style={{ background: palette.bg, color: palette.text, boxShadow: `0 0 0 2px ${palette.ring}, 0 0 20px ${palette.glow}` }}>
+              {name[0].toUpperCase()}
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-barlow font-black text-white">{user.name || 'Unnamed User'}</h1>
-            <p className="text-sm font-mono text-slate-400">{user.mobile}</p>
+          <div className="min-w-0">
+            <h1 className="text-xl font-barlow font-black text-white leading-none">{user.name || 'Unnamed User'}</h1>
+            <p className="text-sm font-mono text-slate-400 mt-1">{user.mobile}</p>
           </div>
         </div>
       </div>
 
       {/* Primary stats */}
-      <div className="float-in-1 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="float-in-1 grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         {[
           { icon: QrCode,     label: 'Total Scans',    value: user.total_scans,          cls: 'text-white'     },
           { icon: TrendingUp, label: 'Total Earned',   value: fmtRs(user.total_earned),  cls: 'text-amber-400' },
           { icon: Wallet,     label: 'Wallet Balance', value: fmtRs(user.wallet_balance),cls: 'text-cyan-400'  },
           { icon: Calendar,   label: 'Joined',         value: new Date(user.registered_at).toLocaleDateString('en-IN'), cls: 'text-slate-300' },
         ].map(({ icon: Icon, label, value, cls }) => (
-          <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 hover:border-[#2a3f5a] transition-colors">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 rounded-lg bg-[#1c2d42]">
-                <Icon size={13} className="text-slate-400" />
+          <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 hover:border-[#2a3f5a] transition-colors group">
+            <div className="flex items-center gap-2 mb-2.5">
+              <div className="p-1.5 rounded-lg bg-[#1c2d42] group-hover:bg-[#263448] transition-colors">
+                <Icon size={12} className="text-slate-500 group-hover:text-slate-300 transition-colors" />
               </div>
               <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">{label}</p>
             </div>
@@ -109,11 +111,12 @@ export default function UserDetail() {
       {/* Mini stats */}
       <div className="float-in-2 grid grid-cols-3 gap-3 mb-6">
         {[
-          { label: 'Redeemed',  value: user.total_redeemed,       cls: 'text-green-400'  },
-          { label: 'To Wallet', value: user.total_wallet_credits, cls: 'text-cyan-400'   },
-          { label: 'Not Now',   value: user.total_pending,        cls: 'text-orange-400' },
-        ].map(({ label, value, cls }) => (
+          { icon: CheckCircle2, label: 'Redeemed',  value: user.total_redeemed,       cls: 'text-green-400',  iconCls: 'text-green-500' },
+          { icon: PiggyBank,    label: 'To Wallet', value: user.total_wallet_credits, cls: 'text-cyan-400',   iconCls: 'text-cyan-500'  },
+          { icon: Clock,        label: 'Not Now',   value: user.total_pending,        cls: 'text-orange-400', iconCls: 'text-orange-500'},
+        ].map(({ icon: Icon, label, value, cls, iconCls }) => (
           <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 text-center hover:border-[#2a3f5a] transition-colors">
+            <Icon size={16} className={`${iconCls} mx-auto mb-2 opacity-60`} />
             <p className={`text-3xl font-barlow font-black ${cls}`}>{value}</p>
             <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mt-1">{label}</p>
           </div>
@@ -125,15 +128,9 @@ export default function UserDetail() {
         {[['scans', 'Scan History'], ['wallet', 'Wallet']].map(([val, label]) => (
           <button key={val} onClick={() => setTab(val)}
             className={`px-5 py-2 text-sm font-barlow font-bold uppercase tracking-wide rounded-lg transition-all ${
-              tab === val
-                ? 'text-black'
-                : 'text-slate-400 hover:text-white'
+              tab === val ? 'text-black' : 'text-slate-400 hover:text-white'
             }`}
-            style={tab === val ? {
-              background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-              boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
-            } : {}}
-          >
+            style={tab === val ? { background: 'linear-gradient(135deg, #f59e0b, #ea580c)', boxShadow: '0 2px 10px rgba(245,158,11,0.3)' } : {}}>
             {label}
           </button>
         ))}
@@ -145,7 +142,7 @@ export default function UserDetail() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#1c2d42]">
+                <tr className="border-b border-[#1c2d42]" style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
                   {['Date', 'Product', 'Batch', 'Amount', 'Action', 'Details'].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500">{h}</th>
                   ))}
@@ -153,7 +150,12 @@ export default function UserDetail() {
               </thead>
               <tbody className="divide-y divide-[#1c2d42]">
                 {history.length === 0
-                  ? <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500 text-sm">No scans yet</td></tr>
+                  ? <tr><td colSpan={6} className="px-5 py-14 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
+                        <QrCode size={20} className="text-slate-600" />
+                      </div>
+                      <p className="text-sm text-slate-500">No scans yet</p>
+                    </td></tr>
                   : history.map(h => {
                       const cfg = ACTION_STYLES[h.action] || {}
                       return (
@@ -161,7 +163,7 @@ export default function UserDetail() {
                           <td className="px-5 py-3 text-[11px] text-slate-400 font-mono">{fmtDate(h.scanned_at)}</td>
                           <td className="px-5 py-3 text-sm text-white">{h.product_name}</td>
                           <td className="px-5 py-3 font-mono text-[11px] text-slate-400">{h.batch_code}</td>
-                          <td className="px-5 py-3 font-barlow font-bold text-amber-400">₹{h.amount}</td>
+                          <td className="px-5 py-3 font-barlow font-black text-amber-400">₹{h.amount}</td>
                           <td className="px-5 py-3">
                             <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-mono border ${cfg.cls}`}>
                               {cfg.label}
@@ -192,7 +194,9 @@ export default function UserDetail() {
       {/* Wallet Tab */}
       {tab === 'wallet' && wallet && (
         <div className="space-y-4">
-          <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-5">
+          <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-5 relative overflow-hidden">
+            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full pointer-events-none"
+                 style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.08), transparent 70%)' }} />
             <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">Current Balance</p>
             <p className="text-4xl font-barlow font-black text-cyan-400">{fmtRs(wallet.wallet_balance)}</p>
             <div className="flex gap-6 mt-3 text-[11px] font-mono text-slate-500">
@@ -203,7 +207,7 @@ export default function UserDetail() {
           <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#1c2d42]">
+                <tr className="border-b border-[#1c2d42]" style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
                   {['Date', 'Type', 'Amount', 'Product / UPI', 'Note'].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500">{h}</th>
                   ))}
@@ -220,7 +224,7 @@ export default function UserDetail() {
                             {t.type === 'credit' ? '+ Credit' : '– Withdrawal'}
                           </span>
                         </td>
-                        <td className="px-5 py-3 font-barlow font-bold text-amber-400">₹{t.amount}</td>
+                        <td className="px-5 py-3 font-barlow font-black text-amber-400">₹{t.amount}</td>
                         <td className="px-5 py-3 text-[11px] text-slate-400">{t.product_name || t.upi_id || '—'}</td>
                         <td className="px-5 py-3 text-[11px] text-slate-500">{t.note}</td>
                       </tr>

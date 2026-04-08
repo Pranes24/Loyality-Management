@@ -139,10 +139,13 @@ async function confirmScan(qrId, userId, userName, userMobile) {
   try {
     await client.query('BEGIN')
 
-    const qrRes = await client.query(
-      'SELECT * FROM qr_codes WHERE id = $1 AND status = $2 FOR UPDATE',
-      [qrId, 'funded']
-    )
+    const qrRes = await client.query(`
+      SELECT q.*, b.id AS batch_uuid, b.batch_code, b.product_name
+      FROM qr_codes q
+      JOIN batches b ON q.batch_id = b.id
+      WHERE q.id = $1 AND q.status = $2
+      FOR UPDATE OF q
+    `, [qrId, 'funded'])
     if (!qrRes.rows.length) throw new Error('QR is no longer available for scanning')
 
     const qr = qrRes.rows[0]
@@ -164,7 +167,12 @@ async function confirmScan(qrId, userId, userName, userMobile) {
     )
 
     await client.query('COMMIT')
-    return { amount: parseFloat(qr.amount) }
+    return {
+      amount:      parseFloat(qr.amount),
+      batchId:     qr.batch_uuid,
+      batchCode:   qr.batch_code,
+      productName: qr.product_name,
+    }
   } catch (err) {
     await client.query('ROLLBACK')
     throw err

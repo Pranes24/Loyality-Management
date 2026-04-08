@@ -1,12 +1,12 @@
-// Admin user list — avatar initials with hashed color, better row design
+// Admin user list — avatar initials with hashed color, sortable, paginated
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, Search, ArrowUpDown, ChevronRight } from 'lucide-react'
+import { Users, Search, ArrowUpDown, ChevronRight, UserX } from 'lucide-react'
 import AdminLayout from '../../components/admin/AdminLayout'
 import api         from '../../lib/api'
 
-function fmtRs(n)   { return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` }
-function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-IN') : '—' }
+function fmtRs(n)      { return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` }
+function fmtDate(d)    { return d ? new Date(d).toLocaleDateString('en-IN') : '—' }
 function maskMobile(m) { return m ? m.slice(0, 3) + '•••' + m.slice(-3) : '—' }
 
 const SORTS = [
@@ -62,48 +62,48 @@ export default function UserList() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8 float-in">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Users size={14} className="text-amber-500" />
-            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500">People</span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="w-1 h-4 rounded-full" style={{ background: 'linear-gradient(to bottom, #f59e0b, #ea580c)' }} />
+            <span className="text-[10px] font-mono uppercase tracking-[0.25em] text-slate-500">People</span>
           </div>
-          <h1 className="text-3xl font-barlow font-black text-white uppercase tracking-wide">Users</h1>
+          <h1 className="text-3xl font-barlow font-black text-white uppercase tracking-wide leading-none">Users</h1>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-barlow font-black text-amber-400">{total.toLocaleString()}</p>
-          <p className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Registered</p>
+          <p className="text-2xl font-barlow font-black gradient-text">{total.toLocaleString()}</p>
+          <p className="text-[9px] font-mono text-slate-500 uppercase tracking-[0.2em]">Registered</p>
         </div>
       </div>
 
       {/* Controls */}
       <div className="float-in-1 flex gap-3 mb-5 flex-wrap">
         <div className="relative flex-1 min-w-48">
-          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
             placeholder="Search by mobile or name…"
             className="w-full bg-[#111827] border border-[#1c2d42] text-white placeholder-slate-600
-                       rounded-xl pl-9 pr-4 py-2.5 text-sm transition-all
-                       focus:outline-none focus:border-amber-500/60"
+                       rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none input-focus transition-all"
           />
         </div>
         <div className="flex items-center gap-2 bg-[#111827] border border-[#1c2d42] rounded-xl px-3">
-          <ArrowUpDown size={13} className="text-slate-500" />
+          <ArrowUpDown size={12} className="text-slate-500" />
           <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1) }}
             className="bg-transparent text-slate-300 text-sm py-2.5 focus:outline-none cursor-pointer">
-            {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            {SORTS.map(s => <option key={s.value} value={s.value} className="bg-[#111827]">{s.label}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Table card */}
+      {/* Table */}
       <div className="float-in-2 bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#1c2d42]">
+              <tr className="border-b border-[#1c2d42]"
+                  style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
                 {['User', 'Scans', 'Redeemed', 'Earned', 'Wallet', 'Joined', ''].map(h => (
-                  <th key={h} className="px-5 py-3.5 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500 first:pl-5">{h}</th>
+                  <th key={h} className="px-5 py-3.5 text-left text-[10px] font-mono uppercase tracking-[0.12em] text-slate-500">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -121,19 +121,19 @@ export default function UserList() {
                         </div>
                       </td>
                       {Array(5).fill(0).map((__, j) => (
-                        <td key={j} className="px-5 py-3.5">
-                          <div className="shimmer-bg h-3 w-16 rounded" />
-                        </td>
+                        <td key={j} className="px-5 py-3.5"><div className="shimmer-bg h-3 w-16 rounded" /></td>
                       ))}
-                      <td className="px-5 py-3.5"><div className="shimmer-bg h-4 w-4 rounded" /></td>
+                      <td className="px-5 py-3.5"><div className="shimmer-bg h-5 w-5 rounded" /></td>
                     </tr>
                   ))
                 : users.length === 0
                 ? (
-                  <tr><td colSpan={7} className="px-5 py-14 text-center">
-                    <Users size={32} className="text-slate-700 mx-auto mb-3" />
-                    <p className="text-sm text-slate-500">No users found</p>
-                    {search && <p className="text-xs text-slate-600 mt-1">Try a different search term</p>}
+                  <tr><td colSpan={7} className="px-5 py-16 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
+                      <UserX size={22} className="text-slate-600" />
+                    </div>
+                    <p className="text-sm text-slate-500 font-medium">No users found</p>
+                    {search && <p className="text-xs text-slate-600 mt-1 font-mono">Try a different search term</p>}
                   </td></tr>
                 )
                 : users.map(u => {
@@ -141,7 +141,6 @@ export default function UserList() {
                     const palette = avatarPalette(name)
                     return (
                       <tr key={u.id} className="table-row-hover group">
-                        {/* User cell with avatar */}
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-barlow font-black flex-shrink-0"
@@ -149,7 +148,9 @@ export default function UserList() {
                               {name[0].toUpperCase()}
                             </div>
                             <div>
-                              <p className="text-sm text-white font-medium">{u.name || <span className="text-slate-500 italic">Unnamed</span>}</p>
+                              <p className="text-sm text-white font-medium group-hover:text-amber-400 transition-colors">
+                                {u.name || <span className="text-slate-500 italic text-xs">Unnamed</span>}
+                              </p>
                               <p className="text-[11px] text-slate-500 font-mono">{maskMobile(u.mobile)}</p>
                             </div>
                           </div>
@@ -161,8 +162,8 @@ export default function UserList() {
                         <td className="px-5 py-3.5 text-[11px] text-slate-500 font-mono">{fmtDate(u.registered_at)}</td>
                         <td className="px-5 py-3.5">
                           <Link to={`/admin/users/${u.id}`}
-                            className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all">
-                            <ChevronRight size={15} />
+                            className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-600 hover:text-amber-400 hover:bg-amber-500/10 transition-all">
+                            <ChevronRight size={14} />
                           </Link>
                         </td>
                       </tr>
@@ -175,7 +176,7 @@ export default function UserList() {
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-[#1c2d42]">
-            <span className="text-[11px] text-slate-500 font-mono">Page {page} of {totalPages}</span>
+            <span className="text-[11px] text-slate-500 font-mono">Page {page} of {totalPages} · {total} users</span>
             <div className="flex gap-2">
               <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1}
                 className="px-3 py-1.5 text-xs border border-[#1c2d42] rounded-lg disabled:opacity-40 text-slate-300 hover:text-white hover:border-[#2a3f5a] transition-all">

@@ -1,7 +1,7 @@
-// Admin dashboard — animated stat cards + activity feed + batch list
+// Admin dashboard — animated stat cards + live activity feed + recent batches
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LayoutDashboard, PackagePlus, QrCode, Users, Wallet, TrendingUp, Clock, ArrowRight, Activity } from 'lucide-react'
+import { LayoutDashboard, PackagePlus, QrCode, Users, Wallet, TrendingUp, Clock, ArrowRight, Activity, Zap } from 'lucide-react'
 import AdminLayout  from '../../components/admin/AdminLayout'
 import StatCard     from '../../components/admin/StatCard'
 import StatusBadge  from '../../components/admin/StatusBadge'
@@ -10,26 +10,23 @@ import api          from '../../lib/api'
 function fmtRs(n) { return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` }
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - new Date(ts)) / 1000)
-  if (s < 60) return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s/60)}m ago`
+  if (s < 60)    return `${s}s ago`
+  if (s < 3600)  return `${Math.floor(s/60)}m ago`
   if (s < 86400) return `${Math.floor(s/3600)}h ago`
   return `${Math.floor(s/86400)}d ago`
 }
 
 const ACTION_CFG = {
-  redeemed:        { label: 'Redeemed',  cls: 'text-green-400', bg: 'bg-green-500/10' },
-  wallet_credited: { label: 'Wallet',    cls: 'text-cyan-400',  bg: 'bg-cyan-500/10'  },
-  pending_reason:  { label: 'Not Now',   cls: 'text-orange-400',bg: 'bg-orange-500/10'},
+  redeemed:        { label: 'UPI',    cls: 'text-green-400',  bg: 'bg-green-500/10 border-green-500/20' },
+  wallet_credited: { label: 'Wallet', cls: 'text-cyan-400',   bg: 'bg-cyan-500/10 border-cyan-500/20'  },
+  pending_reason:  { label: 'Later',  cls: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20' },
 }
 
 const AVATAR_COLORS = [
-  'bg-amber-500/20 text-amber-400',
-  'bg-cyan-500/20 text-cyan-400',
-  'bg-purple-500/20 text-purple-400',
-  'bg-green-500/20 text-green-400',
+  'bg-amber-500/20 text-amber-400', 'bg-cyan-500/20 text-cyan-400',
+  'bg-purple-500/20 text-purple-400', 'bg-green-500/20 text-green-400',
   'bg-pink-500/20 text-pink-400',
 ]
-
 function avatarColor(str) {
   let h = 0
   for (let c of (str || '')) h = h * 31 + c.charCodeAt(0)
@@ -59,40 +56,37 @@ export default function Dashboard() {
       {/* Page header */}
       <div className="flex items-center justify-between mb-8 float-in">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <LayoutDashboard size={14} className="text-amber-500" />
-            <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500">Overview</span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="w-1 h-4 rounded-full" style={{ background: 'linear-gradient(to bottom, #f59e0b, #ea580c)' }} />
+            <span className="text-[10px] font-mono uppercase tracking-[0.25em] text-slate-500">Overview</span>
           </div>
-          <h1 className="text-3xl font-barlow font-black text-white uppercase tracking-wide">Dashboard</h1>
+          <h1 className="text-3xl font-barlow font-black text-white uppercase tracking-wide leading-none">Dashboard</h1>
+          <p className="text-xs text-slate-500 font-mono mt-1">Loyalty QR management system</p>
         </div>
         <Link
           to="/admin/create-batch"
-          className="btn-press flex items-center gap-2 px-5 py-2.5 rounded-xl font-barlow font-bold uppercase tracking-wide text-sm text-black
-                     transition-all duration-200 hover:scale-105"
-          style={{
-            background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-            boxShadow: '0 4px 14px rgba(245,158,11,0.35)',
-          }}
+          className="btn-press flex items-center gap-2 px-5 py-2.5 rounded-xl font-barlow font-bold uppercase tracking-wide text-sm text-black transition-all duration-200 hover:scale-105"
+          style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', boxShadow: '0 4px 20px rgba(245,158,11,0.4)' }}
         >
           <PackagePlus size={15} strokeWidth={2.5} />
           New Batch
         </Link>
       </div>
 
-      {/* Primary stats row */}
+      {/* Primary stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-        <div className="float-in-1"><StatCard loading={loading} label="Total Batches"    value={summary?.batches?.total || 0}   icon={QrCode}     /></div>
-        <div className="float-in-2"><StatCard loading={loading} label="Total QR Codes"   value={summary?.qrCodes?.total || 0}   icon={QrCode}     /></div>
-        <div className="float-in-3"><StatCard loading={loading} label="Registered Users" value={summary?.users?.total || 0}     icon={Users}      /></div>
+        <div className="float-in-1"><StatCard loading={loading} label="Total Batches"    value={summary?.batches?.total || 0}       icon={QrCode}     /></div>
+        <div className="float-in-2"><StatCard loading={loading} label="Total QR Codes"   value={summary?.qrCodes?.total || 0}       icon={QrCode}     /></div>
+        <div className="float-in-3"><StatCard loading={loading} label="Registered Users" value={summary?.users?.total || 0}         icon={Users}      /></div>
         <div className="float-in-4"><StatCard loading={loading} label="Redemption Rate"  value={`${summary?.redemptionRate || 0}%`} icon={TrendingUp} accent /></div>
       </div>
 
-      {/* Finance stats row */}
+      {/* Finance stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-        <div className="float-in-1"><StatCard loading={loading} label="Wallet Balance"    value={fmtRs(summary?.wallet?.balance)}        icon={Wallet} accent /></div>
-        <div className="float-in-2"><StatCard loading={loading} label="Total Distributed" value={fmtRs(summary?.wallet?.total_debited)}   icon={Wallet} /></div>
-        <div className="float-in-3"><StatCard loading={loading} label="QRs Redeemed"      value={summary?.qrCodes?.redeemed || 0}         icon={TrendingUp} /></div>
-        <div className="float-in-4"><StatCard loading={loading} label="In Wallets"        value={summary?.qrCodes?.walletCredited || 0}   icon={Wallet} /></div>
+        <div className="float-in-1"><StatCard loading={loading} label="Wallet Balance"    value={fmtRs(summary?.wallet?.balance)}       icon={Wallet}     accent /></div>
+        <div className="float-in-2"><StatCard loading={loading} label="Total Distributed" value={fmtRs(summary?.wallet?.total_debited)} icon={Wallet}     /></div>
+        <div className="float-in-3"><StatCard loading={loading} label="QRs Redeemed"      value={summary?.qrCodes?.redeemed || 0}       icon={TrendingUp} /></div>
+        <div className="float-in-4"><StatCard loading={loading} label="In Wallets"        value={summary?.qrCodes?.walletCredited || 0} icon={Wallet}     /></div>
       </div>
 
       {/* Bottom panels */}
@@ -100,16 +94,17 @@ export default function Dashboard() {
 
         {/* Recent Activity */}
         <div className="float-in-2 bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2d42]">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2d42]"
+               style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
             <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-amber-500/10">
-                <Activity size={14} className="text-amber-400" />
+              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(245,158,11,0.12)' }}>
+                <Activity size={13} className="text-amber-400" />
               </div>
               <h2 className="text-sm font-barlow font-bold text-white uppercase tracking-wide">Recent Activity</h2>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-[10px] text-slate-500 font-mono">Live</span>
+            <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 live-dot" />
+              <span className="text-[9px] text-green-400 font-mono uppercase tracking-wider">Live</span>
             </div>
           </div>
 
@@ -122,19 +117,21 @@ export default function Dashboard() {
                       <div className="shimmer-bg h-3 w-32 rounded" />
                       <div className="shimmer-bg h-2 w-24 rounded" />
                     </div>
-                    <div className="shimmer-bg h-5 w-14 rounded" />
+                    <div className="shimmer-bg h-5 w-12 rounded-full" />
                   </div>
                 ))
               : activity.length === 0
               ? (
-                <div className="px-5 py-12 text-center">
-                  <Clock size={28} className="text-slate-700 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No activity yet</p>
-                  <p className="text-xs text-slate-600 mt-1">Scans will appear here</p>
+                <div className="px-5 py-14 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
+                    <Clock size={24} className="text-slate-600" />
+                  </div>
+                  <p className="text-sm text-slate-500 font-medium">No activity yet</p>
+                  <p className="text-xs text-slate-600 mt-1 font-mono">Scans will appear here in real-time</p>
                 </div>
               )
-              : activity.map((a, idx) => {
-                  const cfg = ACTION_CFG[a.action] || {}
+              : activity.map((a) => {
+                  const cfg  = ACTION_CFG[a.action] || {}
                   const name = a.user_name || a.user_mobile || '?'
                   return (
                     <div key={a.id} className="px-5 py-3 flex items-center gap-3 table-row-hover">
@@ -142,16 +139,16 @@ export default function Dashboard() {
                         {name[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white truncate font-medium">
+                        <p className="text-sm text-white truncate font-medium flex items-center gap-2">
                           {name}
-                          <span className={`ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.cls}`}>
+                          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${cfg.bg} ${cfg.cls}`}>
                             {cfg.label}
                           </span>
                         </p>
-                        <p className="text-[11px] text-slate-500 font-mono mt-0.5">{a.product_name} · {a.batch_code}</p>
+                        <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">{a.product_name} · {a.batch_code}</p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-barlow font-bold text-amber-400">₹{a.amount}</p>
+                        <p className="text-sm font-barlow font-black text-amber-400">₹{a.amount}</p>
                         <p className="text-[10px] text-slate-600 font-mono">{timeAgo(a.scanned_at)}</p>
                       </div>
                     </div>
@@ -163,15 +160,16 @@ export default function Dashboard() {
 
         {/* Recent Batches */}
         <div className="float-in-3 bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2d42]">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2d42]"
+               style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
             <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-amber-500/10">
-                <QrCode size={14} className="text-amber-400" />
+              <div className="p-1.5 rounded-lg" style={{ background: 'rgba(245,158,11,0.12)' }}>
+                <QrCode size={13} className="text-amber-400" />
               </div>
               <h2 className="text-sm font-barlow font-bold text-white uppercase tracking-wide">Recent Batches</h2>
             </div>
-            <Link to="/admin/batch" className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 font-mono transition-colors">
-              View all <ArrowRight size={12} />
+            <Link to="/admin/batch" className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-mono transition-colors group">
+              View all <ArrowRight size={11} className="group-hover:translate-x-0.5 transition-transform" />
             </Link>
           </div>
 
@@ -180,19 +178,21 @@ export default function Dashboard() {
               ? Array(4).fill(0).map((_, i) => (
                   <div key={i} className="px-5 py-3.5 flex justify-between items-center">
                     <div className="space-y-1.5">
-                      <div className="shimmer-bg h-3 w-32 rounded" />
-                      <div className="shimmer-bg h-2.5 w-20 rounded" />
+                      <div className="shimmer-bg h-3 w-36 rounded" />
+                      <div className="shimmer-bg h-2.5 w-24 rounded" />
                     </div>
                     <div className="shimmer-bg h-5 w-16 rounded-full" />
                   </div>
                 ))
               : batches.length === 0
               ? (
-                <div className="px-5 py-12 text-center">
-                  <QrCode size={28} className="text-slate-700 mx-auto mb-3" />
-                  <p className="text-sm text-slate-500">No batches created yet</p>
-                  <Link to="/admin/create-batch" className="text-xs text-amber-400 mt-2 block hover:underline">
-                    Create your first batch →
+                <div className="px-5 py-14 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
+                    <QrCode size={24} className="text-slate-600" />
+                  </div>
+                  <p className="text-sm text-slate-500 font-medium">No batches yet</p>
+                  <Link to="/admin/create-batch" className="text-xs text-amber-400 mt-2 inline-flex items-center gap-1 hover:text-amber-300 transition-colors">
+                    <Zap size={11} strokeWidth={2.5} /> Create your first batch
                   </Link>
                 </div>
               )
@@ -208,7 +208,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0 ml-3">
                       {b.total_amount != null && (
-                        <span className="text-xs font-barlow font-bold text-amber-400">₹{b.total_amount}</span>
+                        <span className="text-xs font-barlow font-black text-amber-400">₹{Number(b.total_amount).toLocaleString('en-IN')}</span>
                       )}
                       <StatusBadge status={b.status} />
                     </div>

@@ -1,7 +1,7 @@
 // Batch detail — header with progress ring, QR table with status filter
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Download, Zap, Filter, QrCode, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, Download, Zap, Filter, QrCode, MoreHorizontal, PauseCircle, PlayCircle } from 'lucide-react'
 import AdminLayout  from '../../components/admin/AdminLayout'
 import StatusBadge  from '../../components/admin/StatusBadge'
 import api          from '../../lib/api'
@@ -11,9 +11,8 @@ function fmtRs(n)   { return n != null ? `₹${Number(n).toLocaleString('en-IN')
 
 const QR_STATUSES = ['', 'generated', 'funded', 'scanning', 'redeemed', 'wallet_credited', 'pending_reason', 'expired']
 
-// Circular progress ring
 function ProgressRing({ value = 0, max = 100, size = 72, stroke = 6, color = '#f59e0b' }) {
-  const r = (size - stroke) / 2
+  const r    = (size - stroke) / 2
   const circ = 2 * Math.PI * r
   const pct  = max > 0 ? Math.min(value / max, 1) : 0
   return (
@@ -21,7 +20,7 @@ function ProgressRing({ value = 0, max = 100, size = 72, stroke = 6, color = '#f
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1c2d42" strokeWidth={stroke} />
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
               strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
-              strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.8s ease' }} />
+              strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.9s cubic-bezier(0.22,1,0.36,1)' }} />
     </svg>
   )
 }
@@ -44,7 +43,7 @@ export default function BatchDetail() {
 
   async function fetchBatch() {
     try { setBatch(await api.get(`/batch/${id}`)) }
-    catch { navigate('/admin') }
+    catch { navigate('/admin/batch') }
   }
 
   async function fetchQRs() {
@@ -65,9 +64,7 @@ export default function BatchDetail() {
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
-      a.href     = url
-      a.download = `${batch.batch_code}-qrcodes.zip`
-      a.click()
+      a.href = url; a.download = `${batch.batch_code}-qrcodes.zip`; a.click()
       URL.revokeObjectURL(url)
     } finally { setDlLoading(false) }
   }
@@ -87,44 +84,47 @@ export default function BatchDetail() {
     </AdminLayout>
   )
 
-  const redeemed  = batch.redeemed_count  || 0
-  const wallet    = batch.wallet_count    || 0
-  const totalQrs  = batch.total_qrs || 500
-  const usedQrs   = redeemed + wallet
+  const redeemed   = batch.redeemed_count || 0
+  const wallet     = batch.wallet_count   || 0
+  const totalQrs   = batch.total_qrs || 500
+  const usedQrs    = redeemed + wallet
   const totalPages = Math.ceil(total / 50)
+  const usagePct   = Math.round((usedQrs / totalQrs) * 100)
 
   return (
     <AdminLayout>
       {/* Header */}
       <div className="flex items-start justify-between mb-6 float-in">
         <div className="flex items-start gap-3">
-          <button onClick={() => navigate('/admin')}
+          <button onClick={() => navigate('/admin/batch')}
             className="p-2 mt-1 rounded-xl text-slate-400 hover:text-white hover:bg-[#1c2d42] transition-all">
             <ArrowLeft size={18} />
           </button>
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-xs font-mono text-amber-400/80">{batch.batch_code}</span>
+              <span className="text-xs font-mono text-amber-400/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/15">{batch.batch_code}</span>
               <StatusBadge status={batch.status} />
             </div>
-            <h1 className="text-2xl font-barlow font-black text-white">{batch.name}</h1>
-            <p className="text-sm text-slate-400 mt-0.5 font-mono">{batch.product_name}</p>
+            <h1 className="text-2xl font-barlow font-black text-white leading-none">{batch.name}</h1>
+            <p className="text-sm text-slate-400 mt-1 font-mono">{batch.product_name}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {batch.status === 'draft' && (
             <Link to={`/admin/batch/${id}/fund`}
-              className="btn-press flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-barlow font-bold uppercase tracking-wide text-black transition-all hover:scale-105"
-              style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', boxShadow: '0 4px 12px rgba(245,158,11,0.3)' }}>
-              <Zap size={14} strokeWidth={2.5} />
-              Fund Batch
+              className="btn-press flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-barlow font-bold uppercase tracking-wide text-black hover:scale-105 transition-all"
+              style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', boxShadow: '0 4px 16px rgba(245,158,11,0.35)' }}>
+              <Zap size={14} strokeWidth={2.5} /> Fund Batch
             </Link>
           )}
           {['funded', 'paused'].includes(batch.status) && (
             <button onClick={handleTogglePause} disabled={pausing}
-              className="px-4 py-2 border border-[#1c2d42] text-slate-300 hover:text-white hover:border-[#2a3f5a] text-sm font-barlow font-semibold uppercase tracking-wide rounded-xl transition-all disabled:opacity-50">
-              {batch.status === 'paused' ? 'Reactivate' : 'Pause'}
+              className="flex items-center gap-2 px-4 py-2 border border-[#1c2d42] text-slate-300 hover:text-white hover:border-[#2a3f5a] text-sm font-barlow font-semibold uppercase tracking-wide rounded-xl transition-all disabled:opacity-50">
+              {batch.status === 'paused'
+                ? <><PlayCircle size={14} /> Reactivate</>
+                : <><PauseCircle size={14} /> Pause</>
+              }
             </button>
           )}
           <button onClick={handleDownload} disabled={dlLoading}
@@ -135,45 +135,49 @@ export default function BatchDetail() {
         </div>
       </div>
 
-      {/* Top info row with progress ring */}
+      {/* Info row */}
       <div className="float-in-1 grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
-        {/* Progress ring card */}
-        <div className="col-span-2 sm:col-span-1 bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 flex items-center gap-4">
+        {/* Progress ring */}
+        <div className="col-span-2 sm:col-span-1 bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 flex items-center gap-4 hover:border-[#2a3f5a] transition-colors">
           <div className="relative flex-shrink-0">
             <ProgressRing value={usedQrs} max={totalQrs} />
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[11px] font-barlow font-black text-amber-400">{Math.round((usedQrs/totalQrs)*100)}%</span>
+              <span className={`text-[11px] font-barlow font-black ${usagePct > 80 ? 'text-amber-400' : 'text-slate-300'}`}>
+                {usagePct}%
+              </span>
             </div>
           </div>
           <div>
             <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Usage</p>
-            <p className="text-lg font-barlow font-black text-white mt-0.5">{usedQrs}<span className="text-slate-500 font-normal text-sm">/{totalQrs}</span></p>
+            <p className="text-lg font-barlow font-black text-white mt-0.5">
+              {usedQrs}<span className="text-slate-500 font-normal text-sm">/{totalQrs}</span>
+            </p>
           </div>
         </div>
 
         {[
-          { label: 'Total Amount', value: fmtRs(batch.total_amount), cls: 'text-amber-400' },
-          { label: 'Expires',      value: fmtDate(batch.expires_at), cls: 'text-white' },
-          { label: 'Created',      value: fmtDate(batch.created_at), cls: 'text-white' },
-          { label: 'Dist. Mode',   value: batch.dist_mode || 'N/A',  cls: 'text-white capitalize' },
+          { label: 'Total Amount', value: fmtRs(batch.total_amount),        cls: 'text-amber-400' },
+          { label: 'Expires',      value: fmtDate(batch.expires_at),        cls: 'text-white' },
+          { label: 'Created',      value: fmtDate(batch.created_at),        cls: 'text-white' },
+          { label: 'Dist. Mode',   value: batch.dist_mode || 'N/A',         cls: 'text-white capitalize' },
         ].map(({ label, value, cls }) => (
-          <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-4">
-            <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">{label}</p>
+          <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 hover:border-[#2a3f5a] transition-colors">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1.5">{label}</p>
             <p className={`text-base font-barlow font-black ${cls}`}>{value}</p>
           </div>
         ))}
       </div>
 
-      {/* Status breakdown bar */}
+      {/* Status breakdown */}
       <div className="float-in-2 grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
         {[
-          { label: 'Unused',   value: batch.unused_count,   cls: 'text-slate-300',  bg: 'bg-slate-500' },
-          { label: 'Redeemed', value: batch.redeemed_count, cls: 'text-green-400',  bg: 'bg-green-500' },
-          { label: 'Wallet',   value: batch.wallet_count,   cls: 'text-cyan-400',   bg: 'bg-cyan-500'  },
-          { label: 'Pending',  value: batch.pending_count,  cls: 'text-orange-400', bg: 'bg-orange-500'},
-          { label: 'Expired',  value: batch.expired_count,  cls: 'text-red-400',    bg: 'bg-red-500'   },
-          { label: 'Total',    value: batch.total_qrs || 500, cls: 'text-amber-400', bg: 'bg-amber-500' },
-        ].map(({ label, value, cls, bg }) => (
+          { label: 'Unused',   value: batch.unused_count,    cls: 'text-slate-300',  bar: 'bg-slate-500' },
+          { label: 'Redeemed', value: batch.redeemed_count,  cls: 'text-green-400',  bar: 'bg-green-500' },
+          { label: 'Wallet',   value: batch.wallet_count,    cls: 'text-cyan-400',   bar: 'bg-cyan-500'  },
+          { label: 'Pending',  value: batch.pending_count,   cls: 'text-orange-400', bar: 'bg-orange-500'},
+          { label: 'Expired',  value: batch.expired_count,   cls: 'text-red-400',    bar: 'bg-red-500'   },
+          { label: 'Total',    value: batch.total_qrs || 500,cls: 'text-amber-400',  bar: 'bg-amber-500' },
+        ].map(({ label, value, cls }) => (
           <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-xl p-3 text-center hover:border-[#2a3f5a] transition-colors">
             <p className={`text-xl font-barlow font-black ${cls}`}>{value || 0}</p>
             <p className="text-[9px] font-mono uppercase tracking-[0.15em] text-slate-600 mt-0.5">{label}</p>
@@ -183,7 +187,8 @@ export default function BatchDetail() {
 
       {/* QR table */}
       <div className="float-in-3 bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2d42]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c2d42]"
+             style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-amber-500/10">
               <QrCode size={13} className="text-amber-400" />
@@ -194,8 +199,8 @@ export default function BatchDetail() {
           <div className="flex items-center gap-2">
             <Filter size={12} className="text-slate-500" />
             <select value={filter} onChange={e => { setFilter(e.target.value); setPage(1) }}
-              className="bg-[#0c1422] border border-[#1c2d42] text-slate-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500/60">
-              {QR_STATUSES.map(s => <option key={s} value={s}>{s || 'All statuses'}</option>)}
+              className="bg-[#0c1422] border border-[#1c2d42] text-slate-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none">
+              {QR_STATUSES.map(s => <option key={s} value={s} className="bg-[#0c1422]">{s || 'All statuses'}</option>)}
             </select>
           </div>
         </div>
@@ -214,22 +219,23 @@ export default function BatchDetail() {
                 ? Array(8).fill(0).map((_, i) => (
                     <tr key={i}>
                       {Array(6).fill(0).map((__, j) => (
-                        <td key={j} className="px-5 py-3">
-                          <div className="shimmer-bg h-3 rounded w-20" />
-                        </td>
+                        <td key={j} className="px-5 py-3"><div className="shimmer-bg h-3 rounded w-20" /></td>
                       ))}
                     </tr>
                   ))
                 : qrs.length === 0
                 ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500 text-sm">
-                    No QR codes match this filter
+                  <tr><td colSpan={6} className="px-5 py-12 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
+                      <MoreHorizontal size={20} className="text-slate-600" />
+                    </div>
+                    <p className="text-sm text-slate-500">No QR codes match this filter</p>
                   </td></tr>
                 )
                 : qrs.map(q => (
                     <tr key={q.id} className="table-row-hover">
                       <td className="px-5 py-3 font-mono text-[11px] text-slate-500">{q.id.slice(0, 8)}…</td>
-                      <td className="px-5 py-3 font-barlow font-bold text-amber-400">
+                      <td className="px-5 py-3 font-barlow font-black text-amber-400">
                         {q.amount != null ? `₹${q.amount}` : <span className="text-slate-600">—</span>}
                       </td>
                       <td className="px-5 py-3"><StatusBadge status={q.status} /></td>

@@ -39,7 +39,13 @@ router.post('/confirm-scan', async (req, res) => {
   }
 
   const result = await svc.confirmScan(qr_id, user_id, user_name.trim(), user_mobile)
-  res.json({ success: true, amount: result.amount })
+  res.json({
+    success:     true,
+    amount:      result.amount,
+    batchId:     result.batchId,
+    batchCode:   result.batchCode,
+    productName: result.productName,
+  })
 })
 
 // POST /api/redeem/submit — final redemption choice A / B / C

@@ -63,7 +63,7 @@ function manualDistribute(tiers, totalAmount) {
   }
 
   if (totalQty > QR_COUNT) throw new Error(`Total QR count in tiers (${totalQty}) exceeds ${QR_COUNT}`)
-  if (tiersTotal !== totalAmount) throw new Error(`Tier totals (₹${tiersTotal}) do not match budget (₹${totalAmount})`)
+  if (tiersTotal > totalAmount) throw new Error(`Tier totals (₹${tiersTotal}) exceed the budget (₹${totalAmount})`)
 
   // Expand tiers into flat array and shuffle
   const amounts = []
