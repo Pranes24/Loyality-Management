@@ -1,12 +1,14 @@
-// Mobile-first user redemption flow — premium warm design, 5 steps
+// Mobile-first user redemption flow — Firebase Phone Auth + premium warm design
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   QrCode, Smartphone, ShieldCheck, User, Wallet,
   CheckCircle, Clock, AlertCircle, Gift, XCircle, ArrowRight, Banknote, PiggyBank, MessageSquare
 } from 'lucide-react'
-import StepIndicator from '../../components/user/StepIndicator'
-import api           from '../../lib/api'
+import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth'
+import { auth }          from '../../lib/firebase'
+import StepIndicator     from '../../components/user/StepIndicator'
+import api               from '../../lib/api'
 
 const BG = 'linear-gradient(150deg, #b45309 0%, #c2410c 20%, #ea580c 45%, #f97316 70%, #f59e0b 100%)'
 
@@ -57,7 +59,6 @@ function PrimaryBtn({ children, onClick, loading, disabled, className = '' }) {
       style={{
         background: 'linear-gradient(135deg, #c2410c, #ea580c, #f59e0b)',
         boxShadow: '0 8px 24px rgba(194,65,12,0.4)',
-        transform: loading || disabled ? 'none' : undefined,
       }}>
       {loading
         ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -97,25 +98,27 @@ export default function RedeemFlow() {
   const { qrId } = useParams()
   const DEMO_QR  = qrId || 'demo-qr-id'
 
-  const [step,     setStep]     = useState(0)
-  const [qrError,  setQrError]  = useState(null)
-  const [mobile,   setMobile]   = useState('')
-  const [otp,      setOtp]      = useState(['','','','','',''])
-  const [userId,   setUserId]   = useState('')
-  const [name,     setName]     = useState('')
-  const [savedUpi, setSavedUpi] = useState('')
-  const [amount,   setAmount]   = useState(null)
-  const [qrMeta,   setQrMeta]   = useState(null)
-  const [upiId,    setUpiId]    = useState('')
-  const [action,   setAction]   = useState('redeemed')
-  const [reason,   setReason]   = useState('')
-  const [result,   setResult]   = useState(null)
-  const [loading,  setLoading]  = useState(false)
-  const [otpTimer, setOtpTimer] = useState(0)
-  const [error,    setError]    = useState('')
+  const [step,               setStep]               = useState(0)
+  const [qrError,            setQrError]            = useState(null)
+  const [mobile,             setMobile]             = useState('')
+  const [otp,                setOtp]                = useState(['','','','','',''])
+  const [userId,             setUserId]             = useState('')
+  const [name,               setName]               = useState('')
+  const [savedUpi,           setSavedUpi]           = useState('')
+  const [amount,             setAmount]             = useState(null)
+  const [qrMeta,             setQrMeta]             = useState(null)
+  const [upiId,              setUpiId]              = useState('')
+  const [action,             setAction]             = useState('redeemed')
+  const [reason,             setReason]             = useState('')
+  const [result,             setResult]             = useState(null)
+  const [loading,            setLoading]            = useState(false)
+  const [otpTimer,           setOtpTimer]           = useState(0)
+  const [error,              setError]              = useState('')
+  const [confirmationResult, setConfirmationResult] = useState(null)
 
-  const otpRefs  = useRef([])
-  const clearError = useCallback(() => setError(''), [])
+  const otpRefs          = useRef([])
+  const recaptchaRef     = useRef(null)
+  const clearError       = useCallback(() => setError(''), [])
 
   useEffect(() => {
     if (DEMO_QR === 'demo-qr-id') { setStep(1); return }
@@ -137,16 +140,37 @@ export default function RedeemFlow() {
     if (step === 2) setTimeout(() => otpRefs.current[0]?.focus(), 100)
   }, [step])
 
+  // ── Build / reset reCAPTCHA verifier ─────────────────────────────────────
+  function buildRecaptchaVerifier() {
+    if (recaptchaRef.current) {
+      try { recaptchaRef.current.clear() } catch (_) {}
+    }
+    recaptchaRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
+      size: 'invisible',
+      callback: () => {},
+      'expired-callback': () => { setError('reCAPTCHA expired. Please try again.') },
+    })
+    return recaptchaRef.current
+  }
+
+  // ── Send OTP via Firebase ─────────────────────────────────────────────────
   async function handleSendOTP() {
     if (!mobile.match(/^[6-9]\d{9}$/)) return setError('Enter a valid 10-digit mobile number')
     setLoading(true); clearError()
     try {
-      await api.post('/redeem/otp/send', { mobile, qr_id: DEMO_QR })
+      const verifier     = buildRecaptchaVerifier()
+      const confirmation = await signInWithPhoneNumber(auth, `+91${mobile}`, verifier)
+      setConfirmationResult(confirmation)
       setOtpTimer(30); setStep(2)
-    } catch (e) { setError(e.error || 'Failed to send OTP') }
-    finally { setLoading(false) }
+    } catch (e) {
+      console.error('Firebase sendOTP error:', e.code, e.message)
+      if (e.code === 'auth/too-many-requests')       setError('Too many attempts. Please wait and try again.')
+      else if (e.code === 'auth/invalid-phone-number') setError('Invalid phone number format.')
+      else setError(`OTP error: ${e.code || e.message}`)
+    } finally { setLoading(false) }
   }
 
+  // ── OTP input helpers ─────────────────────────────────────────────────────
   function handleOtpInput(val, idx) {
     const digits = [...otp]
     digits[idx] = val.replace(/\D/g, '').slice(-1)
@@ -162,24 +186,42 @@ export default function RedeemFlow() {
       setOtp(digits); otpRefs.current[idx - 1]?.focus()
     }
   }
+
+  // ── Verify OTP with Firebase, then send idToken to backend ───────────────
   async function handleVerifyOTPWith(digits) {
     const code = (digits || otp).join('')
     if (code.length < 6) return setError('Enter the complete 6-digit OTP')
+    if (!confirmationResult) return setError('Session expired. Please request a new OTP.')
     setLoading(true); clearError()
     try {
-      const res = await api.post('/redeem/otp/verify', { mobile, otp: code, qr_id: DEMO_QR })
+      const firebaseResult = await confirmationResult.confirm(code)
+      const idToken        = await firebaseResult.user.getIdToken()
+
+      const res = await api.post('/redeem/otp/verify', { idToken, qr_id: DEMO_QR })
       setUserId(res.userId)
-      if (res.name) setName(res.name)
+      localStorage.setItem('loyalty_user_id', res.userId)
+      localStorage.setItem('loyalty_user_mobile', mobile)
+      if (res.name)       setName(res.name)
       if (res.savedUpiId) { setSavedUpi(res.savedUpiId); setUpiId(res.savedUpiId) }
       setStep(3)
-    } catch (e) { setError(e.error || 'Invalid OTP'); setOtp(['','','','','','']); otpRefs.current[0]?.focus() }
-    finally { setLoading(false) }
+    } catch (e) {
+      console.error('Firebase verifyOTP error:', e)
+      if (e.code === 'auth/invalid-verification-code') setError('Incorrect OTP. Please try again.')
+      else if (e.code === 'auth/code-expired') setError('OTP expired. Please request a new one.')
+      else setError(e.error || 'Verification failed. Please try again.')
+      setOtp(['','','','','','']); otpRefs.current[0]?.focus()
+    } finally { setLoading(false) }
   }
+
   async function handleResendOTP() {
     setLoading(true)
     try {
-      await api.post('/redeem/otp/send', { mobile, qr_id: DEMO_QR })
+      const verifier     = buildRecaptchaVerifier()
+      const confirmation = await signInWithPhoneNumber(auth, `+91${mobile}`, verifier)
+      setConfirmationResult(confirmation)
       setOtpTimer(30); setOtp(['','','','','','']); clearError()
+    } catch (e) {
+      setError('Failed to resend OTP. Please try again.')
     } finally { setLoading(false) }
   }
 
@@ -198,8 +240,8 @@ export default function RedeemFlow() {
   }
 
   async function handleSubmit() {
-    if (action === 'redeemed'       && !upiId.trim())             return setError('Enter your UPI ID')
-    if (action === 'pending_reason' && reason.trim().length < 5)  return setError('Provide a reason (min 5 characters)')
+    if (action === 'redeemed'       && !upiId.trim())            return setError('Enter your UPI ID')
+    if (action === 'pending_reason' && reason.trim().length < 5) return setError('Provide a reason (min 5 characters)')
     setLoading(true); clearError()
     try {
       const res = await api.post('/redeem/submit', {
@@ -224,6 +266,9 @@ export default function RedeemFlow() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 font-nunito noise-bg relative"
          style={{ background: BG }}>
+
+      {/* Invisible reCAPTCHA container — required by Firebase */}
+      <div id="recaptcha-container" />
 
       {/* Brand bar */}
       <div className="flex items-center gap-2.5 mb-6 relative z-10">
@@ -275,9 +320,6 @@ export default function RedeemFlow() {
             <PrimaryBtn onClick={handleSendOTP} loading={loading}>
               Send OTP <ArrowRight size={18} strokeWidth={2.5} />
             </PrimaryBtn>
-            <p className="text-center text-xs text-gray-400 mt-4 leading-relaxed">
-              Demo OTP: <span className="font-black text-orange-500 text-sm">123456</span>
-            </p>
           </div>
         </Card>
       )}
@@ -455,7 +497,7 @@ export default function RedeemFlow() {
                     <p className="text-sm font-black text-gray-800">{opt.label}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
                   </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all`}
+                  <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
                        style={{ borderColor: action === opt.val ? opt.iconColor : '#e5e7eb' }}>
                     {action === opt.val && (
                       <div className="w-2.5 h-2.5 rounded-full" style={{ background: opt.iconColor }} />
@@ -513,7 +555,7 @@ export default function RedeemFlow() {
                 </div>
                 <h2 className="text-2xl font-black text-gray-800 mb-1">Payment Initiated!</h2>
                 <p className="text-gray-500 text-sm mb-5">₹{amount} is on its way to your UPI</p>
-                <div className="bg-gray-50/80 rounded-2xl p-4 text-left space-y-3 border border-gray-100">
+                <div className="bg-gray-50/80 rounded-2xl p-4 text-left space-y-3 border border-gray-100 mb-5">
                   {[
                     { label: 'Amount', value: `₹${amount}`, cls: 'font-black text-gray-800 text-base' },
                     { label: 'UPI ID', value: upiId,         cls: 'font-mono text-xs text-gray-600' },
@@ -525,6 +567,9 @@ export default function RedeemFlow() {
                     </div>
                   ))}
                 </div>
+                <PrimaryBtn onClick={() => window.location.href = '/user'}>
+                  View My Dashboard <ArrowRight size={16} />
+                </PrimaryBtn>
               </div>
             )}
 
@@ -536,13 +581,16 @@ export default function RedeemFlow() {
                 </div>
                 <h2 className="text-2xl font-black text-gray-800 mb-1">Added to Wallet!</h2>
                 <p className="text-gray-500 text-sm mb-4">₹{amount} is now in your balance</p>
-                <div className="rounded-2xl py-5 px-6"
+                <div className="rounded-2xl py-5 px-6 mb-5"
                      style={{ background: 'linear-gradient(135deg, #ecfeff, #f0fdff)', border: '1.5px solid #a5f3fc' }}>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Wallet Balance</p>
                   <p className="text-4xl font-black" style={{ color: '#0891b2' }}>
                     ₹{result?.walletBalance?.toFixed(2) || amount}
                   </p>
                 </div>
+                <PrimaryBtn onClick={() => window.location.href = '/user'}>
+                  View My Dashboard <ArrowRight size={16} />
+                </PrimaryBtn>
               </div>
             )}
 
@@ -553,10 +601,13 @@ export default function RedeemFlow() {
                   <CheckCircle size={44} style={{ color: '#ea580c' }} />
                 </div>
                 <h2 className="text-2xl font-black text-gray-800 mb-1">Response Recorded</h2>
-                <p className="text-gray-500 text-sm leading-relaxed mt-2">
+                <p className="text-gray-500 text-sm leading-relaxed mt-2 mb-5">
                   Thank you! Your feedback has been noted.<br />
                   You can still redeem this QR later.
                 </p>
+                <PrimaryBtn onClick={() => window.location.href = '/user'}>
+                  View My Dashboard <ArrowRight size={16} />
+                </PrimaryBtn>
               </div>
             )}
           </Card>

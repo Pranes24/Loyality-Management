@@ -12,22 +12,13 @@ router.get('/:qrId/check', async (req, res) => {
   res.json({ valid: true, message: 'QR is valid. Proceed to OTP.' })
 })
 
-// POST /api/otp/send
-router.post('/otp/send', async (req, res) => {
-  const { mobile, qr_id } = req.body
-  if (!mobile?.match(/^[6-9]\d{9}$/)) return res.status(400).json({ error: 'Enter a valid 10-digit mobile number' })
-  if (!qr_id) return res.status(400).json({ error: 'qr_id is required' })
-
-  const result = await svc.sendOTP(mobile, qr_id)
-  res.json({ success: true, sessionId: result.sessionId, message: 'OTP sent successfully' })
-})
-
-// POST /api/otp/verify
+// POST /api/redeem/otp/verify — verifies Firebase Phone Auth ID token, upserts user
 router.post('/otp/verify', async (req, res) => {
-  const { mobile, otp, qr_id } = req.body
-  if (!mobile || !otp || !qr_id) return res.status(400).json({ error: 'mobile, otp, and qr_id are required' })
+  const { idToken, qr_id } = req.body
+  if (!idToken) return res.status(400).json({ error: 'idToken is required' })
+  if (!qr_id)   return res.status(400).json({ error: 'qr_id is required' })
 
-  const result = await svc.verifyOTP(mobile, otp, qr_id)
+  const result = await svc.verifyFirebaseToken(idToken)
   res.json({ success: true, userId: result.userId, isNew: result.isNew, name: result.name, savedUpiId: result.savedUpiId })
 })
 

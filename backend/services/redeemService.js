@@ -1,6 +1,6 @@
-// Business logic for QR validation, OTP flow, and redemption submission
-const pool = require('../db/pool')
-const { generateOTP, getOTPExpiry, sendSMS } = require('../utils/otp')
+// Business logic for QR validation, Firebase Phone Auth verification, and redemption submission
+const pool  = require('../db/pool')
+const admin = require('../lib/firebaseAdmin')
 const { debitAdminWallet } = require('./walletService')
 
 /**
@@ -53,65 +53,26 @@ async function checkQR(qrId) {
 }
 
 /**
- * Sends an OTP to the given mobile number for a specific QR
- * @param {string} mobile
- * @param {string} qrId
- * @returns {Promise<{sessionId: string}>}
+ * Verifies a Firebase Phone Auth ID token and upserts the global user
+ * @param {string} idToken - Firebase ID token from client
+ * @returns {Promise<{userId: string, isNew: boolean, name: string|null, savedUpiId: string|null}>}
  */
-async function sendOTP(mobile, qrId) {
-  await pool.query(
-    'UPDATE otp_sessions SET verified = TRUE WHERE mobile = $1 AND qr_id = $2 AND verified = FALSE',
-    [mobile, qrId]
-  )
+async function verifyFirebaseToken(idToken) {
+  const decoded     = await admin.auth().verifyIdToken(idToken)
+  const phoneNumber = decoded.phone_number // e.g. "+919876543210"
+  if (!phoneNumber) throw new Error('Phone number not found in token')
 
-  const otp       = generateOTP()
-  const expiresAt = getOTPExpiry()
-
-  const res = await pool.query(`
-    INSERT INTO otp_sessions (mobile, otp, qr_id, expires_at)
-    VALUES ($1, $2, $3, $4) RETURNING id
-  `, [mobile, otp, qrId, expiresAt])
-
-  await sendSMS(mobile, otp)
-  return { sessionId: res.rows[0].id }
-}
-
-/**
- * Verifies the OTP and creates/returns the user profile (global user)
- * @param {string} mobile
- * @param {string} otp
- * @param {string} qrId
- * @returns {Promise<{userId: string, isNew: boolean}>}
- */
-async function verifyOTP(mobile, otp, qrId) {
-  const sessionRes = await pool.query(`
-    SELECT * FROM otp_sessions
-    WHERE mobile = $1 AND qr_id = $2 AND verified = FALSE
-    ORDER BY created_at DESC LIMIT 1
-  `, [mobile, qrId])
-
-  if (!sessionRes.rows.length) throw new Error('No active OTP session found')
-
-  const session = sessionRes.rows[0]
-  if (new Date(session.expires_at) < new Date()) throw new Error('OTP has expired. Please request a new one.')
-  if (session.attempts >= 3) throw new Error('Too many incorrect attempts. Please request a new OTP.')
-
-  if (session.otp !== otp) {
-    await pool.query('UPDATE otp_sessions SET attempts = attempts + 1 WHERE id = $1', [session.id])
-    const remaining = 3 - (session.attempts + 1)
-    throw new Error(`Incorrect OTP. ${remaining} attempt(s) remaining.`)
-  }
-
-  await pool.query('UPDATE otp_sessions SET verified = TRUE WHERE id = $1', [session.id])
+  // Strip country code — store as 10-digit mobile
+  const mobile = phoneNumber.replace(/^\+91/, '').replace(/\D/g, '')
+  if (mobile.length !== 10) throw new Error('Invalid phone number in token')
 
   // Global user — upsert by mobile only
-  await pool.query(`
-    INSERT INTO users (mobile) VALUES ($1)
-    ON CONFLICT (mobile) DO NOTHING
-  `, [mobile])
-
+  await pool.query(
+    'INSERT INTO users (mobile) VALUES ($1) ON CONFLICT (mobile) DO NOTHING',
+    [mobile]
+  )
   const existing = await pool.query('SELECT * FROM users WHERE mobile = $1', [mobile])
-  const user = existing.rows[0]
+  const user     = existing.rows[0]
 
   return { userId: user.id, isNew: !user.name, savedUpiId: user.upi_id, name: user.name }
 }
@@ -242,4 +203,4 @@ async function submitRedemption(qrId, userId, action, data) {
   }
 }
 
-module.exports = { checkQR, sendOTP, verifyOTP, confirmScan, submitRedemption }
+module.exports = { checkQR, verifyFirebaseToken, confirmScan, submitRedemption }

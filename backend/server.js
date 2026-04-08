@@ -5,13 +5,16 @@ require('express-async-errors')
 const express = require('express')
 const cors    = require('cors')
 
-const authRouter   = require('./routes/auth')
-const superRouter  = require('./routes/super')
-const batchRouter  = require('./routes/batch')
-const redeemRouter = require('./routes/redeem')
-const usersRouter  = require('./routes/users')
-const walletRouter = require('./routes/wallet')
-const statsRouter  = require('./routes/stats')
+const authRouter       = require('./routes/auth')
+const superRouter      = require('./routes/super')
+const batchRouter      = require('./routes/batch')
+const redeemRouter     = require('./routes/redeem')
+const usersRouter      = require('./routes/users')
+const walletRouter     = require('./routes/wallet')
+const statsRouter      = require('./routes/stats')
+const userWalletRouter = require('./routes/userWallet')
+
+const { startExpiryCron } = require('./jobs/expireBatches')
 
 const app  = express()
 const PORT = process.env.PORT || 4000
@@ -23,8 +26,9 @@ app.use(express.json())
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
 
 // Public routes (no auth required)
-app.use('/api/auth',   authRouter)
-app.use('/api/redeem', redeemRouter)
+app.use('/api/auth',        authRouter)
+app.use('/api/redeem',      redeemRouter)
+app.use('/api/user-wallet', userWalletRouter)
 
 // Org admin routes (JWT required, scoped to org)
 app.use('/api/batch',  batchRouter)
@@ -44,4 +48,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Loyalty API running on http://localhost:${PORT}`)
+  startExpiryCron()
 })

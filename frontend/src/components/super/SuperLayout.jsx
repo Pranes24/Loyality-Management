@@ -1,12 +1,13 @@
 // Super admin layout — sidebar + main content area
 import React, { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Zap, LayoutDashboard, Building2, LogOut, ChevronRight, ShieldCheck } from 'lucide-react'
+import { Zap, LayoutDashboard, Building2, LogOut, ChevronRight, ShieldCheck, Wallet } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
 const NAV = [
-  { to: '/super',       label: 'Dashboard',     icon: LayoutDashboard, exact: true },
-  { to: '/super/orgs',  label: 'Organizations', icon: Building2 },
+  { to: '/super',             label: 'Dashboard',     icon: LayoutDashboard, exact: true },
+  { to: '/super/orgs',        label: 'Organizations', icon: Building2 },
+  { to: '/super/withdrawals', label: 'Withdrawals',   icon: Wallet },
 ]
 
 export default function SuperLayout({ children }) {

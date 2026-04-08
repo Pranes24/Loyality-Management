@@ -60,12 +60,18 @@ export default function BatchDetail() {
   async function handleDownload() {
     setDlLoading(true)
     try {
-      const res  = await fetch(`/api/batch/${id}/export`)
+      const token = localStorage.getItem('loyalty_token')
+      const res   = await fetch(`/api/batch/${id}/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error('Export failed')
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href = url; a.download = `${batch.batch_code}-qrcodes.zip`; a.click()
       URL.revokeObjectURL(url)
+    } catch (e) {
+      alert('Failed to download QR codes. Please try again.')
     } finally { setDlLoading(false) }
   }
 

@@ -2,7 +2,8 @@
 const express = require('express')
 const router  = express.Router()
 const { requireSuperAdmin } = require('../middleware/auth')
-const svc = require('../services/superService')
+const svc          = require('../services/superService')
+const withdrawalSvc = require('../services/withdrawalService')
 
 router.use(requireSuperAdmin)
 
@@ -59,6 +60,25 @@ router.post('/orgs/:id/topup', async (req, res) => {
   if (!amount || amount <= 0) return res.status(400).json({ error: 'A positive amount is required' })
   const wallet = await svc.topupOrgWallet(req.params.id, parseFloat(amount), note)
   res.json({ success: true, wallet })
+})
+
+// GET /api/super/withdrawals
+router.get('/withdrawals', async (req, res) => {
+  const { status, page, limit } = req.query
+  const result = await withdrawalSvc.getAllWithdrawals({
+    status, page: parseInt(page) || 1, limit: parseInt(limit) || 20,
+  })
+  res.json(result)
+})
+
+// PATCH /api/super/withdrawals/:id — approve or reject
+router.patch('/withdrawals/:id', async (req, res) => {
+  const { status, note } = req.body
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'status must be approved or rejected' })
+  }
+  const withdrawal = await withdrawalSvc.processWithdrawal(req.params.id, status, note)
+  res.json({ success: true, withdrawal })
 })
 
 module.exports = router
