@@ -1,16 +1,16 @@
 # Backend — Node.js production image
+# Build context: repo root (Coolify default)
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies first (better layer caching)
-COPY package*.json ./
-RUN npm ci --only=production
+# Copy from backend/ subdirectory (Coolify uses repo root as build context)
+COPY backend/package*.json ./
+RUN npm ci --omit=dev
 
-# Copy source
-COPY . .
+COPY backend/ .
 
-# Remove .env if accidentally copied — credentials come from Coolify env vars
+# Remove .env if accidentally present — credentials come from Coolify env vars
 RUN rm -f .env
 
 EXPOSE 4000

@@ -1,15 +1,16 @@
 # Frontend — multi-stage build: Vite → nginx
-# Self-contained: nginx config is embedded inline (no external file dependency)
+# Build context: repo root (Coolify default)
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
+# Copy from frontend/ subdirectory (Coolify uses repo root as build context)
+COPY frontend/package*.json ./
 RUN npm ci
 
-COPY . .
+COPY frontend/ .
 RUN npm run build
 
 # ── Stage 2: serve ────────────────────────────────────────────────────────────
