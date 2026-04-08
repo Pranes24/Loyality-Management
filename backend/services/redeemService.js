@@ -1,6 +1,6 @@
 // Business logic for QR validation, Firebase Phone Auth verification, and redemption submission
-const pool  = require('../db/pool')
-const admin = require('../lib/firebaseAdmin')
+const pool       = require('../db/pool')
+const getAdmin   = require('../lib/firebaseAdmin')
 const { debitAdminWallet } = require('./walletService')
 
 /**
@@ -58,7 +58,7 @@ async function checkQR(qrId) {
  * @returns {Promise<{userId: string, isNew: boolean, name: string|null, savedUpiId: string|null}>}
  */
 async function verifyFirebaseToken(idToken) {
-  const decoded     = await admin.auth().verifyIdToken(idToken)
+  const decoded     = await getAdmin().auth().verifyIdToken(idToken)
   const phoneNumber = decoded.phone_number // e.g. "+919876543210"
   if (!phoneNumber) throw new Error('Phone number not found in token')
 

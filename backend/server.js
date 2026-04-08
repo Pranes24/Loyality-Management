@@ -48,5 +48,15 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`Loyalty API running on http://localhost:${PORT}`)
+
+  // Log which env vars are present (not values — just presence) to aid debugging
+  const required = ['DATABASE_URL', 'JWT_SECRET', 'FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY']
+  const missing  = required.filter(k => !process.env[k])
+  if (missing.length) {
+    console.warn(`[startup] WARNING — missing env vars: ${missing.join(', ')}`)
+  } else {
+    console.log('[startup] All required env vars present')
+  }
+
   startExpiryCron()
 })
