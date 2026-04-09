@@ -129,7 +129,7 @@ export default function FundBatch() {
         </div>
 
         {/* Common fields */}
-        <div className="float-in-2 grid grid-cols-2 gap-4">
+        <div className="float-in-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-2">
               Total Budget (₹) <span className="text-amber-500">*</span>
@@ -207,7 +207,8 @@ export default function FundBatch() {
         {/* Manual Tiers */}
         {mode === 'manual' && (
           <div className="float-in-3 bg-[#0c1422] border border-[#1c2d42] rounded-2xl overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[360px]">
               <thead>
                 <tr className="border-b border-[#1c2d42]"
                     style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
@@ -251,6 +252,7 @@ export default function FundBatch() {
               </tbody>
             </table>
 
+            </div>
             <div className="px-4 py-3 border-t border-[#1c2d42] flex items-center justify-between">
               <button type="button" onClick={addTier}
                 className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-mono transition-colors">

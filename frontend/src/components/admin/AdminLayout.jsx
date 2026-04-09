@@ -16,7 +16,7 @@ export default function AdminLayout({ children }) {
         {/* Ambient orb top-left */}
         <div className="pointer-events-none absolute top-0 left-0 w-96 h-96 orb-pulse"
              style={{ background: 'radial-gradient(circle at top left, rgba(245,158,11,0.04), transparent 60%)', zIndex: 1 }} />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:pl-10 z-10">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-8 lg:pt-8 lg:pl-10 z-10">
           {children}
         </div>
       </main>

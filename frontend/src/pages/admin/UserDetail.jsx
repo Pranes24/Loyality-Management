@@ -109,7 +109,7 @@ export default function UserDetail() {
       </div>
 
       {/* Mini stats */}
-      <div className="float-in-2 grid grid-cols-3 gap-3 mb-6">
+      <div className="float-in-2 grid grid-cols-3 gap-2 sm:gap-3 mb-6">
         {[
           { icon: CheckCircle2, label: 'Redeemed',  value: user.total_redeemed,       cls: 'text-green-400',  iconCls: 'text-green-500' },
           { icon: PiggyBank,    label: 'To Wallet', value: user.total_wallet_credits, cls: 'text-cyan-400',   iconCls: 'text-cyan-500'  },
@@ -140,7 +140,7 @@ export default function UserDetail() {
       {tab === 'scans' && (
         <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="border-b border-[#1c2d42]" style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
                   {['Date', 'Product', 'Batch', 'Amount', 'Action', 'Details'].map(h => (
@@ -205,7 +205,8 @@ export default function UserDetail() {
             </div>
           </div>
           <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="border-b border-[#1c2d42]" style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
                   {['Date', 'Type', 'Amount', 'Product / UPI', 'Note'].map(h => (
@@ -232,6 +233,7 @@ export default function UserDetail() {
                 }
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}

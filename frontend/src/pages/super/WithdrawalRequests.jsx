@@ -30,7 +30,7 @@ export default function WithdrawalRequests() {
   const [filter,      setFilter]      = useState('pending')
   const [loading,     setLoading]     = useState(true)
   const [processing,  setProcessing]  = useState(null)
-  const [noteModal,   setNoteModal]   = useState(null) // { id, action }
+  const [noteModal,   setNoteModal]   = useState(null)
   const [note,        setNote]        = useState('')
 
   useEffect(() => { fetchWithdrawals() }, [page, filter])
@@ -59,24 +59,22 @@ export default function WithdrawalRequests() {
 
   return (
     <SuperLayout>
-      <div className="flex items-center gap-3 mb-8">
+      <div className="flex items-center gap-3 mb-6">
         <div className="p-2.5 rounded-xl" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.2)' }}>
           <Wallet size={16} className="text-amber-400" />
         </div>
         <div>
           <p className="text-[10px] font-mono uppercase tracking-[0.25em] text-slate-500">Finance</p>
-          <h1 className="text-3xl font-barlow font-black text-white uppercase tracking-wide leading-none">Withdrawal Requests</h1>
+          <h1 className="text-2xl sm:text-3xl font-barlow font-black text-white uppercase tracking-wide leading-none">Withdrawals</h1>
         </div>
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-5">
+      <div className="flex gap-2 mb-5 flex-wrap">
         {['pending', 'approved', 'rejected', ''].map(s => (
           <button key={s} onClick={() => { setFilter(s); setPage(1) }}
-            className={`px-4 py-2 rounded-xl text-xs font-barlow font-bold uppercase tracking-wide transition-all ${
-              filter === s
-                ? 'text-black'
-                : 'text-slate-400 bg-[#111827] border border-[#1c2d42] hover:text-white'
+            className={`px-3 py-2 rounded-xl text-xs font-barlow font-bold uppercase tracking-wide transition-all ${
+              filter === s ? 'text-black' : 'text-slate-400 bg-[#111827] border border-[#1c2d42] hover:text-white'
             }`}
             style={filter === s ? { background: 'linear-gradient(135deg, #f59e0b, #ea580c)', boxShadow: '0 4px 12px rgba(245,158,11,0.3)' } : {}}>
             {s || 'All'}
@@ -84,9 +82,68 @@ export default function WithdrawalRequests() {
         ))}
       </div>
 
-      <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
+      {/* Mobile Cards */}
+      <div className="md:hidden space-y-3 mb-4">
+        {loading
+          ? Array(4).fill(0).map((_, i) => (
+              <div key={i} className="bg-[#111827] border border-[#1c2d42] rounded-xl p-4 space-y-3">
+                <div className="flex justify-between">
+                  <div className="shimmer-bg h-4 w-24 rounded" />
+                  <div className="shimmer-bg h-6 w-20 rounded-full" />
+                </div>
+                <div className="shimmer-bg h-3 w-32 rounded" />
+                <div className="shimmer-bg h-3 w-40 rounded" />
+              </div>
+            ))
+          : withdrawals.length === 0
+          ? (
+            <div className="bg-[#111827] border border-[#1c2d42] rounded-xl py-12 text-center">
+              <Clock size={24} className="text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">No withdrawal requests found</p>
+            </div>
+          )
+          : withdrawals.map(w => (
+            <div key={w.id} className="bg-[#111827] border border-[#1c2d42] rounded-xl p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="text-sm font-medium text-white">{w.user_name || '—'}</p>
+                  <p className="text-[11px] font-mono text-slate-400">+91 {w.user_mobile}</p>
+                </div>
+                <StatusBadge status={w.status} />
+              </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xl font-barlow font-black text-amber-400">{fmtRs(w.amount)}</span>
+                <span className="text-[11px] font-mono text-slate-500">{fmtDate(w.requested_at)}</span>
+              </div>
+              <p className="text-xs font-mono text-slate-400 truncate mb-3">UPI: {w.upi_id}</p>
+              {w.status === 'pending' && (
+                <div className="flex gap-2">
+                  <button onClick={() => setNoteModal({ id: w.id, action: 'approved' })}
+                    disabled={processing === w.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-barlow font-bold uppercase
+                               bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-all disabled:opacity-50">
+                    <CheckCircle size={12} /> Mark Paid
+                  </button>
+                  <button onClick={() => setNoteModal({ id: w.id, action: 'rejected' })}
+                    disabled={processing === w.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-barlow font-bold uppercase
+                               bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50">
+                    <XCircle size={12} /> Reject
+                  </button>
+                </div>
+              )}
+              {w.status !== 'pending' && w.note && (
+                <p className="text-[11px] text-slate-500 font-mono">{w.note}</p>
+              )}
+            </div>
+          ))
+        }
+      </div>
+
+      {/* Desktop Table */}
+      <div className="hidden md:block bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[700px]">
             <thead>
               <tr className="border-b border-[#1c2d42]">
                 {['User', 'Mobile', 'Amount', 'UPI ID', 'Requested', 'Status', 'Actions'].map(h => (
@@ -121,16 +178,12 @@ export default function WithdrawalRequests() {
                     <td className="px-5 py-3">
                       {w.status === 'pending' && (
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => setNoteModal({ id: w.id, action: 'approved' })}
-                            disabled={processing === w.id}
+                          <button onClick={() => setNoteModal({ id: w.id, action: 'approved' })} disabled={processing === w.id}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-barlow font-bold uppercase tracking-wide
                                        bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-all disabled:opacity-50">
                             <CheckCircle size={11} /> Paid
                           </button>
-                          <button
-                            onClick={() => setNoteModal({ id: w.id, action: 'rejected' })}
-                            disabled={processing === w.id}
+                          <button onClick={() => setNoteModal({ id: w.id, action: 'rejected' })} disabled={processing === w.id}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-barlow font-bold uppercase tracking-wide
                                        bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50">
                             <XCircle size={11} /> Reject
@@ -161,9 +214,22 @@ export default function WithdrawalRequests() {
         )}
       </div>
 
+      {/* Mobile Pagination */}
+      {totalPages > 1 && (
+        <div className="md:hidden flex items-center justify-between px-1 py-3">
+          <span className="text-[11px] text-slate-500 font-mono">Page {page} of {totalPages}</span>
+          <div className="flex gap-2">
+            <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1}
+              className="px-3 py-1.5 text-xs border border-[#1c2d42] rounded-lg disabled:opacity-40 text-slate-300">Prev</button>
+            <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page===totalPages}
+              className="px-3 py-1.5 text-xs border border-[#1c2d42] rounded-lg disabled:opacity-40 text-slate-300">Next</button>
+          </div>
+        </div>
+      )}
+
       {/* Confirm modal */}
       {noteModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
           <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-6 w-full max-w-sm">
             <h3 className="font-barlow font-black text-white uppercase tracking-wide mb-1">
               {noteModal.action === 'approved' ? 'Mark as Paid' : 'Reject Request'}
@@ -171,7 +237,7 @@ export default function WithdrawalRequests() {
             <p className="text-xs text-slate-400 mb-4">
               {noteModal.action === 'approved'
                 ? 'Confirm you have manually transferred the amount via UPI/PhonePe.'
-                : 'The amount will be returned to the user\'s wallet balance.'
+                : "The amount will be returned to the user's wallet balance."
               }
             </p>
             <input value={note} onChange={e => setNote(e.target.value)}
@@ -183,14 +249,9 @@ export default function WithdrawalRequests() {
                 className="flex-1 py-2.5 rounded-xl border border-[#1c2d42] text-slate-300 hover:text-white text-sm font-barlow font-bold uppercase tracking-wide transition-all">
                 Cancel
               </button>
-              <button onClick={() => handleProcess(noteModal.id, noteModal.action)}
-                disabled={processing === noteModal.id}
+              <button onClick={() => handleProcess(noteModal.id, noteModal.action)} disabled={processing === noteModal.id}
                 className="flex-1 py-2.5 rounded-xl text-sm font-barlow font-bold uppercase tracking-wide text-white transition-all disabled:opacity-50"
-                style={{
-                  background: noteModal.action === 'approved'
-                    ? 'linear-gradient(135deg, #16a34a, #15803d)'
-                    : 'linear-gradient(135deg, #dc2626, #b91c1c)',
-                }}>
+                style={{ background: noteModal.action === 'approved' ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #dc2626, #b91c1c)' }}>
                 {processing === noteModal.id
                   ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" />
                   : noteModal.action === 'approved' ? 'Confirm Paid' : 'Confirm Reject'

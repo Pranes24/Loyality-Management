@@ -106,7 +106,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 pt-5 border-t border-amber-500/10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-5 border-t border-amber-500/10">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-1.5">Total Funded</p>
                 <p className="text-xl font-barlow font-black text-white">{wallet ? fmtRs(wallet.total_funded) : '—'}</p>
@@ -164,7 +164,7 @@ export default function WalletPage() {
 
       {/* Summary row */}
       {summary && (
-        <div className="float-in-3 grid grid-cols-2 gap-3 mb-5">
+        <div className="float-in-3 grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           {[
             { icon: ArrowDownLeft, label: 'Total Credits', value: fmtRs(summary.total_credits), cls: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/15' },
             { icon: ArrowUpRight,  label: 'Total Debits',  value: fmtRs(summary.total_debits),  cls: 'text-red-400',   bg: 'bg-red-500/10',   border: 'border-red-500/15'   },

@@ -100,23 +100,23 @@ export default function BatchDetail() {
   return (
     <AdminLayout>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6 float-in">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 float-in">
         <div className="flex items-start gap-3">
           <button onClick={() => navigate('/admin/batch')}
-            className="p-2 mt-1 rounded-xl text-slate-400 hover:text-white hover:bg-[#1c2d42] transition-all">
+            className="p-2 mt-1 rounded-xl text-slate-400 hover:text-white hover:bg-[#1c2d42] transition-all flex-shrink-0">
             <ArrowLeft size={18} />
           </button>
           <div>
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className="text-xs font-mono text-amber-400/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/15">{batch.batch_code}</span>
               <StatusBadge status={batch.status} />
             </div>
-            <h1 className="text-2xl font-barlow font-black text-white leading-none">{batch.name}</h1>
+            <h1 className="text-xl sm:text-2xl font-barlow font-black text-white leading-none">{batch.name}</h1>
             <p className="text-sm text-slate-400 mt-1 font-mono">{batch.product_name}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end">
           {batch.status === 'draft' && (
             <Link to={`/admin/batch/${id}/fund`}
               className="btn-press flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-barlow font-bold uppercase tracking-wide text-black hover:scale-105 transition-all"
@@ -142,7 +142,7 @@ export default function BatchDetail() {
       </div>
 
       {/* Info row */}
-      <div className="float-in-1 grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+      <div className="float-in-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
         {/* Progress ring */}
         <div className="col-span-2 sm:col-span-1 bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 flex items-center gap-4 hover:border-[#2a3f5a] transition-colors">
           <div className="relative flex-shrink-0">
@@ -175,7 +175,7 @@ export default function BatchDetail() {
       </div>
 
       {/* Status breakdown */}
-      <div className="float-in-2 grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
+      <div className="float-in-2 grid grid-cols-3 gap-2 mb-5">
         {[
           { label: 'Unused',   value: batch.unused_count,    cls: 'text-slate-300',  bar: 'bg-slate-500' },
           { label: 'Redeemed', value: batch.redeemed_count,  cls: 'text-green-400',  bar: 'bg-green-500' },
@@ -212,7 +212,7 @@ export default function BatchDetail() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[580px]">
             <thead>
               <tr className="border-b border-[#1c2d42]">
                 {['QR ID', 'Amount', 'Status', 'Scanned At', 'User', 'Action / Note'].map(h => (

@@ -238,7 +238,8 @@ export default function OrgList() {
 
       {/* Table */}
       <div className="float-in-2 bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[600px]">
           <thead>
             <tr className="border-b border-[#1c2d42]"
                 style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
@@ -324,6 +325,7 @@ export default function OrgList() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {showCreate && <CreateOrgModal onClose={() => setShowCreate(false)} onCreated={fetchOrgs} />}
