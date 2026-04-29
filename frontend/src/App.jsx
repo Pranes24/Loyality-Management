@@ -6,9 +6,10 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginPage       from './pages/auth/LoginPage'
 import RegisterOrgPage from './pages/auth/RegisterOrgPage'
 
-import SuperDashboard      from './pages/super/SuperDashboard'
-import OrgList             from './pages/super/OrgList'
-import WithdrawalRequests  from './pages/super/WithdrawalRequests'
+import SuperDashboard        from './pages/super/SuperDashboard'
+import OrgList               from './pages/super/OrgList'
+import WithdrawalRequests    from './pages/super/WithdrawalRequests'
+import SuperOrgAllocations   from './pages/super/SuperOrgAllocations'
 
 import Dashboard    from './pages/admin/Dashboard'
 import CreateBatch  from './pages/admin/CreateBatch'
@@ -17,7 +18,8 @@ import BatchDetail  from './pages/admin/BatchDetail'
 import FundBatch    from './pages/admin/FundBatch'
 import UserList     from './pages/admin/UserList'
 import UserDetail   from './pages/admin/UserDetail'
-import WalletPage   from './pages/admin/WalletPage'
+import WalletPage          from './pages/admin/WalletPage'
+import StickerCustomizer   from './pages/admin/StickerCustomizer'
 import RedeemFlow      from './pages/user/RedeemFlow'
 import UserWalletPage  from './pages/user/UserWalletPage'
 import UserApp         from './pages/user/UserApp'
@@ -68,9 +70,10 @@ function AppRoutes() {
       <Route path="/register" element={<GuestOnly><RegisterOrgPage /></GuestOnly>} />
 
       {/* Super admin */}
-      <Route path="/super"                  element={<RequireSuperAdmin><SuperDashboard /></RequireSuperAdmin>} />
-      <Route path="/super/orgs"             element={<RequireSuperAdmin><OrgList /></RequireSuperAdmin>} />
-      <Route path="/super/withdrawals"      element={<RequireSuperAdmin><WithdrawalRequests /></RequireSuperAdmin>} />
+      <Route path="/super"                             element={<RequireSuperAdmin><SuperDashboard /></RequireSuperAdmin>} />
+      <Route path="/super/orgs"                        element={<RequireSuperAdmin><OrgList /></RequireSuperAdmin>} />
+      <Route path="/super/orgs/:orgId/allocations"     element={<RequireSuperAdmin><SuperOrgAllocations /></RequireSuperAdmin>} />
+      <Route path="/super/withdrawals"                 element={<RequireSuperAdmin><WithdrawalRequests /></RequireSuperAdmin>} />
 
       {/* Org admin panel */}
       <Route path="/admin"                element={<RequireOrgAdmin><Dashboard /></RequireOrgAdmin>} />
@@ -80,7 +83,8 @@ function AppRoutes() {
       <Route path="/admin/batch/:id/fund" element={<RequireOrgAdmin><FundBatch /></RequireOrgAdmin>} />
       <Route path="/admin/users"          element={<RequireOrgAdmin><UserList /></RequireOrgAdmin>} />
       <Route path="/admin/users/:id"      element={<RequireOrgAdmin><UserDetail /></RequireOrgAdmin>} />
-      <Route path="/admin/wallet"         element={<RequireOrgAdmin><WalletPage /></RequireOrgAdmin>} />
+      <Route path="/admin/wallet"          element={<RequireOrgAdmin><WalletPage /></RequireOrgAdmin>} />
+      <Route path="/admin/sticker-design" element={<RequireOrgAdmin><StickerCustomizer /></RequireOrgAdmin>} />
 
       {/* Public — consumer redemption flow (redirects to /user popup) */}
       <Route path="/redeem/:qrId"   element={<RedeemToUserRedirect />} />

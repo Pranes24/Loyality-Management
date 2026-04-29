@@ -1,6 +1,7 @@
-// Super admin — organization list with create modal and wallet top-up
+// Super admin — organization list with create modal, wallet top-up and quota management
 import React, { useEffect, useState } from 'react'
-import { Building2, Plus, Search, Wallet, MoreHorizontal, CheckCircle, AlertCircle, X, Eye, EyeOff } from 'lucide-react'
+import { Building2, Plus, Search, Wallet, MoreHorizontal, CheckCircle, AlertCircle, X, Eye, EyeOff, Layers, QrCode } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import SuperLayout from '../../components/super/SuperLayout'
 import api from '../../lib/api'
 
@@ -15,7 +16,7 @@ function StatusPill({ status }) {
 }
 
 function CreateOrgModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ org_name: '', org_code: '', admin_name: '', admin_email: '', admin_password: '' })
+  const [form, setForm] = useState({ org_name: '', org_code: '', admin_name: '', admin_email: '', admin_password: '', qr_quota: '' })
   const [show,    setShow]    = useState(false)
   const [error,   setError]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -30,10 +31,11 @@ function CreateOrgModal({ onClose, onCreated }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (Object.values(form).some(v => !v)) return setError('All fields are required')
+    const { qr_quota, ...required } = form
+    if (Object.values(required).some(v => !v)) return setError('All fields except QR Quota are required')
     setLoading(true)
     try {
-      await api.post('/super/orgs', form)
+      await api.post('/super/orgs', { ...form, qr_quota: parseInt(qr_quota) || 0 })
       onCreated()
       onClose()
     } catch (err) {
@@ -85,6 +87,18 @@ function CreateOrgModal({ onClose, onCreated }) {
             </div>
           </div>
 
+          {/* QR Quota — optional at creation */}
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-1.5">
+              QR Quota <span className="text-slate-600">(optional — can set later)</span>
+            </label>
+            <input name="qr_quota" type="number" min={0} value={form.qr_quota} onChange={handleChange}
+              placeholder="e.g. 50000"
+              className="w-full bg-[#0c1422] border border-[#1c2d42] text-white placeholder-slate-600
+                         rounded-xl px-4 py-2.5 text-sm input-focus focus:outline-none transition-all" />
+            <p className="text-[10px] text-slate-600 font-mono mt-1">Total QR codes this org can ever create</p>
+          </div>
+
           {error && (
             <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/8 border border-red-500/15 rounded-xl px-4 py-3">
               <AlertCircle size={14} className="flex-shrink-0" /> {error}
@@ -101,6 +115,103 @@ function CreateOrgModal({ onClose, onCreated }) {
               style={{ background: loading ? '#6b7280' : 'linear-gradient(135deg, #f59e0b, #ea580c)' }}>
               {loading ? <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : <CheckCircle size={14} />}
               {loading ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function SetQuotaModal({ org, onClose, onDone }) {
+  const [quota,   setQuota]   = useState(String(org.qr_quota || ''))
+  const [error,   setError]   = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const qrUsed      = parseInt(org.qr_used)      || 0
+  const currentQuota = parseInt(org.qr_quota)    || 0
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const val = parseInt(quota)
+    if (!Number.isInteger(val) || val < 0) return setError('Enter a valid non-negative number')
+    if (val < qrUsed) return setError(`Cannot set below already-issued count (${qrUsed.toLocaleString('en-IN')})`)
+    setLoading(true)
+    try {
+      await api.patch(`/super/orgs/${org.id}/quota`, { qr_quota: val })
+      onDone()
+      onClose()
+    } catch (err) {
+      setError(err.error || 'Failed to update quota')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full max-w-sm bg-[#111827] border border-[#1c2d42] rounded-2xl p-6 float-in"
+           style={{ boxShadow: '0 32px 64px rgba(0,0,0,0.5)' }}>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg" style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)' }}>
+              <Layers size={14} className="text-cyan-400" />
+            </div>
+            <h2 className="text-lg font-barlow font-black text-white uppercase tracking-wide">Set QR Quota</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1c2d42] transition-all">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Current state */}
+        <div className="bg-[#0c1422] rounded-xl px-4 py-3 mb-5 space-y-1.5">
+          <div className="flex justify-between text-[11px] font-mono">
+            <span className="text-slate-500">Organisation</span>
+            <span className="text-amber-400 font-bold">{org.org_code}</span>
+          </div>
+          <div className="flex justify-between text-[11px] font-mono">
+            <span className="text-slate-500">Current quota</span>
+            <span className="text-white">{currentQuota > 0 ? currentQuota.toLocaleString('en-IN') : 'Not set'}</span>
+          </div>
+          <div className="flex justify-between text-[11px] font-mono">
+            <span className="text-slate-500">Already issued</span>
+            <span className={qrUsed > 0 ? 'text-cyan-400' : 'text-slate-400'}>{qrUsed.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-1.5">
+              New Quota (total QR codes)
+            </label>
+            <input type="number" min={qrUsed} value={quota}
+              onChange={e => { setQuota(e.target.value); setError('') }}
+              placeholder={`Min ${qrUsed.toLocaleString('en-IN')}`}
+              className="w-full bg-[#0c1422] border border-[#1c2d42] text-white placeholder-slate-600
+                         rounded-xl px-4 py-2.5 text-sm input-focus focus:outline-none transition-all" />
+            {qrUsed > 0 && (
+              <p className="text-[10px] text-slate-600 font-mono mt-1">
+                Cannot go below {qrUsed.toLocaleString('en-IN')} (already issued)
+              </p>
+            )}
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/8 border border-red-500/15 rounded-xl px-3 py-2.5">
+              <AlertCircle size={13} className="flex-shrink-0" /> {error}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-barlow font-bold uppercase tracking-wide text-slate-400 bg-[#1c2d42] hover:bg-[#263448] transition-all">
+              Cancel
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 py-2.5 rounded-xl text-sm font-barlow font-black uppercase tracking-wide text-black flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
+              style={{ background: loading ? '#6b7280' : 'linear-gradient(135deg, #22d3ee, #0891b2)', color: '#000' }}>
+              {loading ? <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : <Layers size={13} />}
+              {loading ? 'Saving…' : 'Save Quota'}
             </button>
           </div>
         </form>
@@ -179,6 +290,7 @@ function TopupModal({ org, onClose, onDone }) {
 }
 
 export default function OrgList() {
+  const navigate   = useNavigate()
   const [orgs,     setOrgs]     = useState([])
   const [total,    setTotal]    = useState(0)
   const [search,   setSearch]   = useState('')
@@ -186,6 +298,7 @@ export default function OrgList() {
   const [loading,  setLoading]  = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [topupOrg,   setTopupOrg]   = useState(null)
+  const [quotaOrg,   setQuotaOrg]   = useState(null)
 
   useEffect(() => { fetchOrgs() }, [search, page])
 
@@ -239,11 +352,11 @@ export default function OrgList() {
       {/* Table */}
       <div className="float-in-2 bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[600px]">
+        <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="border-b border-[#1c2d42]"
                 style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
-              {['Organization', 'Org Code', 'Wallet Balance', 'Active Batches', 'Status', 'Actions'].map(h => (
+              {['Organization', 'Org Code', 'Wallet Balance', 'Active Batches', 'QR Quota', 'Status', 'Actions'].map(h => (
                 <th key={h} className="px-5 py-3 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500">{h}</th>
               ))}
             </tr>
@@ -252,7 +365,7 @@ export default function OrgList() {
             {loading
               ? Array(5).fill(0).map((_, i) => (
                   <tr key={i}>
-                    {Array(6).fill(0).map((__, j) => (
+                    {Array(7).fill(0).map((__, j) => (
                       <td key={j} className="px-5 py-3.5"><div className="shimmer-bg h-3 rounded w-20" /></td>
                     ))}
                   </tr>
@@ -260,7 +373,7 @@ export default function OrgList() {
               : orgs.length === 0
               ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center">
+                  <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="w-12 h-12 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
                       <MoreHorizontal size={20} className="text-slate-600" />
                     </div>
@@ -286,13 +399,40 @@ export default function OrgList() {
                       {org.active_batches || 0}
                     </td>
                     <td className="px-5 py-3.5">
+                      {(() => {
+                        const quota = parseInt(org.qr_quota) || 0
+                        const used  = parseInt(org.qr_used)  || 0
+                        const pct   = quota > 0 ? Math.min(100, Math.round(used / quota * 100)) : 0
+                        const color = pct >= 90 ? '#f87171' : pct >= 70 ? '#fbbf24' : '#22d3ee'
+                        return (
+                          <div className="min-w-[100px]">
+                            <div className="flex justify-between text-[10px] font-mono mb-1">
+                              <span className="text-slate-400">{used.toLocaleString('en-IN')}</span>
+                              <span className="text-slate-500">{quota > 0 ? quota.toLocaleString('en-IN') : '—'}</span>
+                            </div>
+                            <div className="h-1 bg-[#1c2d42] rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </td>
+                    <td className="px-5 py-3.5">
                       <StatusPill status={org.status} />
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
+                        <button onClick={() => navigate(`/super/orgs/${org.id}/allocations`)}
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-violet-400 font-mono transition-colors px-2.5 py-1.5 rounded-lg hover:bg-violet-500/10">
+                          <QrCode size={12} /> QR Alloc
+                        </button>
                         <button onClick={() => setTopupOrg(org)}
                           className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-400 font-mono transition-colors px-2.5 py-1.5 rounded-lg hover:bg-amber-500/10">
                           <Wallet size={12} /> Top Up
+                        </button>
+                        <button onClick={() => setQuotaOrg(org)}
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-400 font-mono transition-colors px-2.5 py-1.5 rounded-lg hover:bg-cyan-500/10">
+                          <Layers size={12} /> Quota
                         </button>
                         <button onClick={() => toggleStatus(org)}
                           className={`text-xs font-mono px-2.5 py-1.5 rounded-lg transition-colors ${
@@ -330,6 +470,7 @@ export default function OrgList() {
 
       {showCreate && <CreateOrgModal onClose={() => setShowCreate(false)} onCreated={fetchOrgs} />}
       {topupOrg   && <TopupModal org={topupOrg} onClose={() => setTopupOrg(null)} onDone={fetchOrgs} />}
+      {quotaOrg   && <SetQuotaModal org={quotaOrg} onClose={() => setQuotaOrg(null)} onDone={fetchOrgs} />}
     </SuperLayout>
   )
 }

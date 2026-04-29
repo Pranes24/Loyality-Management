@@ -27,7 +27,9 @@ async function getOrgs({ page = 1, limit = 20, search } = {}) {
         ow.total_funded,
         ow.total_debited,
         COUNT(DISTINCT b.id) FILTER (WHERE b.status != 'draft') AS active_batches,
-        COUNT(DISTINCT au.id) AS admin_count
+        COUNT(DISTINCT au.id) AS admin_count,
+        (SELECT COUNT(*)::int FROM qr_codes WHERE org_id = o.id) AS qr_used,
+        (o.qr_quota - (SELECT COUNT(*)::int FROM qr_codes WHERE org_id = o.id)) AS qr_remaining
       FROM organizations o
       LEFT JOIN org_wallets ow ON ow.org_id = o.id
       LEFT JOIN batches b ON b.org_id = o.id
@@ -51,7 +53,10 @@ async function getOrgs({ page = 1, limit = 20, search } = {}) {
 async function getOrgById(orgId) {
   const [orgRes, adminsRes] = await Promise.all([
     pool.query(`
-      SELECT o.*, ow.balance, ow.total_funded, ow.total_debited
+      SELECT o.*,
+        ow.balance, ow.total_funded, ow.total_debited,
+        (SELECT COUNT(*)::int FROM qr_codes WHERE org_id = o.id) AS qr_used,
+        (o.qr_quota - (SELECT COUNT(*)::int FROM qr_codes WHERE org_id = o.id)) AS qr_remaining
       FROM organizations o
       LEFT JOIN org_wallets ow ON ow.org_id = o.id
       WHERE o.id = $1
@@ -67,10 +72,11 @@ async function getOrgById(orgId) {
 
 /**
  * Creates a new org + org_admin account (super admin action)
- * @param {{ orgName, orgCode, adminName, adminEmail, adminPassword }} data
+ * @param {{ orgName, orgCode, adminName, adminEmail, adminPassword, qrQuota? }} data
  * @returns {Promise<Object>}
  */
-async function createOrg({ orgName, orgCode, adminName, adminEmail, adminPassword }) {
+async function createOrg({ orgName, orgCode, adminName, adminEmail, adminPassword, qrQuota = 0 }) {
+  const quota  = Math.max(0, parseInt(qrQuota) || 0)
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -86,8 +92,8 @@ async function createOrg({ orgName, orgCode, adminName, adminEmail, adminPasswor
     if (emailCheck.rows.length) throw Object.assign(new Error('Email already registered'), { status: 409 })
 
     const orgRes = await client.query(`
-      INSERT INTO organizations (name, org_code) VALUES ($1, $2) RETURNING *
-    `, [orgName.trim(), orgCode.toUpperCase()])
+      INSERT INTO organizations (name, org_code, qr_quota) VALUES ($1, $2, $3) RETURNING *
+    `, [orgName.trim(), orgCode.toUpperCase(), quota])
     const org = orgRes.rows[0]
 
     await client.query('INSERT INTO org_wallets (org_id) VALUES ($1)', [org.id])
@@ -157,6 +163,60 @@ async function topupOrgWallet(orgId, amount, note = 'Super admin top-up') {
 }
 
 /**
+ * Sets or adjusts the QR quota for an org (US-047, US-051).
+ * Blocks reduction below the org's current qr_used count.
+ * @param {string} orgId
+ * @param {number} newQuota
+ * @returns {Promise<Object>} updated org row with qr_quota, qr_used, qr_remaining
+ */
+async function updateOrgQuota(orgId, newQuota) {
+  const quota = parseInt(newQuota)
+  if (!Number.isInteger(quota) || quota < 0) {
+    throw Object.assign(new Error('qr_quota must be a non-negative integer'), { status: 400 })
+  }
+
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    // Lock org row and get current used count atomically
+    const orgRes = await client.query(
+      'SELECT id, qr_quota FROM organizations WHERE id = $1 FOR UPDATE', [orgId]
+    )
+    if (!orgRes.rows.length) throw Object.assign(new Error('Organization not found'), { status: 404 })
+
+    const usedRes = await client.query(
+      'SELECT COUNT(*)::int AS qr_used FROM qr_codes WHERE org_id = $1', [orgId]
+    )
+    const qr_used = usedRes.rows[0].qr_used
+
+    if (quota < qr_used) {
+      throw Object.assign(
+        new Error(`Cannot set quota below used count (${qr_used} QR codes already issued)`),
+        { status: 400 }
+      )
+    }
+
+    const updated = await client.query(
+      'UPDATE organizations SET qr_quota = $1 WHERE id = $2 RETURNING *',
+      [quota, orgId]
+    )
+
+    await client.query('COMMIT')
+    return {
+      ...updated.rows[0],
+      qr_used,
+      qr_remaining: quota - qr_used,
+    }
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+/**
  * Platform-wide summary stats for super admin dashboard
  * @returns {Promise<Object>}
  */
@@ -190,4 +250,4 @@ async function getPlatformStats() {
   }
 }
 
-module.exports = { getOrgs, getOrgById, createOrg, updateOrgStatus, topupOrgWallet, getPlatformStats }
+module.exports = { getOrgs, getOrgById, createOrg, updateOrgStatus, topupOrgWallet, getPlatformStats, updateOrgQuota }

@@ -1,7 +1,7 @@
 // Batch detail — header with progress ring, QR table with status filter
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Download, Zap, Filter, QrCode, MoreHorizontal, PauseCircle, PlayCircle } from 'lucide-react'
+import { ArrowLeft, Zap, Filter, QrCode, MoreHorizontal, PauseCircle, PlayCircle } from 'lucide-react'
 import AdminLayout  from '../../components/admin/AdminLayout'
 import StatusBadge  from '../../components/admin/StatusBadge'
 import api          from '../../lib/api'
@@ -35,7 +35,6 @@ export default function BatchDetail() {
   const [page,      setPage]     = useState(1)
   const [filter,    setFilter]   = useState('')
   const [loading,   setLoading]  = useState(true)
-  const [dlLoading, setDlLoading]= useState(false)
   const [pausing,   setPausing]  = useState(false)
 
   useEffect(() => { fetchBatch() }, [id])
@@ -55,24 +54,6 @@ export default function BatchDetail() {
       setQrs(res.qrCodes || [])
       setTotal(res.total || 0)
     } finally { setLoading(false) }
-  }
-
-  async function handleDownload() {
-    setDlLoading(true)
-    try {
-      const token = localStorage.getItem('loyalty_token')
-      const res   = await fetch(`/api/batch/${id}/export`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) throw new Error('Export failed')
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href = url; a.download = `${batch.batch_code}-qrcodes.zip`; a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      alert('Failed to download QR codes. Please try again.')
-    } finally { setDlLoading(false) }
   }
 
   async function handleTogglePause() {
@@ -133,16 +114,11 @@ export default function BatchDetail() {
               }
             </button>
           )}
-          <button onClick={handleDownload} disabled={dlLoading}
-            className="flex items-center gap-2 px-4 py-2 border border-[#1c2d42] text-slate-300 hover:text-white hover:border-[#2a3f5a] text-sm font-barlow font-semibold uppercase tracking-wide rounded-xl transition-all disabled:opacity-50">
-            <Download size={14} />
-            {dlLoading ? 'Preparing…' : 'Download QRs'}
-          </button>
         </div>
       </div>
 
       {/* Info row */}
-      <div className="float-in-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+      <div className="float-in-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         {/* Progress ring */}
         <div className="col-span-2 sm:col-span-1 bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 flex items-center gap-4 hover:border-[#2a3f5a] transition-colors">
           <div className="relative flex-shrink-0">
@@ -162,10 +138,17 @@ export default function BatchDetail() {
         </div>
 
         {[
-          { label: 'Total Amount', value: fmtRs(batch.total_amount),        cls: 'text-amber-400' },
-          { label: 'Expires',      value: fmtDate(batch.expires_at),        cls: 'text-white' },
-          { label: 'Created',      value: fmtDate(batch.created_at),        cls: 'text-white' },
-          { label: 'Dist. Mode',   value: batch.dist_mode || 'N/A',         cls: 'text-white capitalize' },
+          { label: 'Total Amount', value: fmtRs(batch.total_amount),  cls: 'text-amber-400' },
+          { label: 'Expires',      value: fmtDate(batch.expires_at),  cls: 'text-white' },
+          { label: 'Created',      value: fmtDate(batch.created_at),  cls: 'text-white' },
+          { label: 'Dist. Mode',   value: batch.dist_mode || 'N/A',   cls: 'text-white capitalize' },
+          {
+            label: 'QR Range',
+            value: batch.qr_number_start
+              ? `${Number(batch.qr_number_start).toLocaleString('en-IN')} – ${Number(batch.qr_number_end).toLocaleString('en-IN')}`
+              : '—',
+            cls: 'text-cyan-400',
+          },
         ].map(({ label, value, cls }) => (
           <div key={label} className="bg-[#111827] border border-[#1c2d42] rounded-2xl p-4 hover:border-[#2a3f5a] transition-colors">
             <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1.5">{label}</p>
@@ -212,10 +195,10 @@ export default function BatchDetail() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[580px]">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-[#1c2d42]">
-                {['QR ID', 'Amount', 'Status', 'Scanned At', 'User', 'Action / Note'].map(h => (
+                {['No.', 'QR ID', 'Amount', 'Status', 'Scanned At', 'User', 'Action / Note'].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500">{h}</th>
                 ))}
               </tr>
@@ -224,14 +207,14 @@ export default function BatchDetail() {
               {loading
                 ? Array(8).fill(0).map((_, i) => (
                     <tr key={i}>
-                      {Array(6).fill(0).map((__, j) => (
+                      {Array(7).fill(0).map((__, j) => (
                         <td key={j} className="px-5 py-3"><div className="shimmer-bg h-3 rounded w-20" /></td>
                       ))}
                     </tr>
                   ))
                 : qrs.length === 0
                 ? (
-                  <tr><td colSpan={6} className="px-5 py-12 text-center">
+                  <tr><td colSpan={7} className="px-5 py-12 text-center">
                     <div className="w-12 h-12 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
                       <MoreHorizontal size={20} className="text-slate-600" />
                     </div>
@@ -240,6 +223,9 @@ export default function BatchDetail() {
                 )
                 : qrs.map(q => (
                     <tr key={q.id} className="table-row-hover">
+                      <td className="px-5 py-3 font-mono text-[11px] text-cyan-400 font-bold whitespace-nowrap">
+                        {q.qr_number ? `No. ${String(q.qr_number).padStart(6, '0')}` : '—'}
+                      </td>
                       <td className="px-5 py-3 font-mono text-[11px] text-slate-500">{q.id.slice(0, 8)}…</td>
                       <td className="px-5 py-3 font-barlow font-black text-amber-400">
                         {q.amount != null ? `₹${q.amount}` : <span className="text-slate-600">—</span>}

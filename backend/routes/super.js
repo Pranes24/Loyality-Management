@@ -4,6 +4,8 @@ const router  = express.Router()
 const { requireSuperAdmin } = require('../middleware/auth')
 const svc          = require('../services/superService')
 const withdrawalSvc = require('../services/withdrawalService')
+const batchSvc     = require('../services/batchService')
+const allocSvc     = require('../services/allocationService')
 
 router.use(requireSuperAdmin)
 
@@ -27,9 +29,9 @@ router.get('/orgs/:id', async (req, res) => {
   res.json(org)
 })
 
-// POST /api/super/orgs — create org + org_admin
+// POST /api/super/orgs — create org + org_admin (qr_quota optional, defaults to 0)
 router.post('/orgs', async (req, res) => {
-  const { org_name, org_code, admin_name, admin_email, admin_password } = req.body
+  const { org_name, org_code, admin_name, admin_email, admin_password, qr_quota } = req.body
   if (!org_name || !org_code || !admin_name || !admin_email || !admin_password) {
     return res.status(400).json({ error: 'org_name, org_code, admin_name, admin_email, admin_password are required' })
   }
@@ -40,8 +42,19 @@ router.post('/orgs', async (req, res) => {
   const result = await svc.createOrg({
     orgName: org_name, orgCode: org_code,
     adminName: admin_name, adminEmail: admin_email, adminPassword: admin_password,
+    qrQuota: qr_quota,
   })
   res.status(201).json({ success: true, ...result })
+})
+
+// PATCH /api/super/orgs/:id/quota — set or adjust QR quota (US-047, US-051)
+router.patch('/orgs/:id/quota', async (req, res) => {
+  const { qr_quota } = req.body
+  if (qr_quota === undefined || qr_quota === null) {
+    return res.status(400).json({ error: 'qr_quota is required' })
+  }
+  const result = await svc.updateOrgQuota(req.params.id, qr_quota)
+  res.json({ success: true, org: result })
 })
 
 // PATCH /api/super/orgs/:id/status
@@ -60,6 +73,53 @@ router.post('/orgs/:id/topup', async (req, res) => {
   if (!amount || amount <= 0) return res.status(400).json({ error: 'A positive amount is required' })
   const wallet = await svc.topupOrgWallet(req.params.id, parseFloat(amount), note)
   res.json({ success: true, wallet })
+})
+
+// GET /api/super/orgs/:orgId/pool — available QR pool stats
+router.get('/orgs/:orgId/pool', async (req, res) => {
+  const stats = await allocSvc.getPoolStats(req.params.orgId)
+  res.json(stats)
+})
+
+// GET /api/super/orgs/:orgId/allocations — list allocation events (newest first)
+router.get('/orgs/:orgId/allocations', async (req, res) => {
+  const { page, limit } = req.query
+  const result = await allocSvc.getAllocations(req.params.orgId, {
+    page: parseInt(page) || 1,
+    limit: parseInt(limit) || 20,
+  })
+  res.json(result)
+})
+
+// POST /api/super/orgs/:orgId/allocations — generate QR codes into org pool
+router.post('/orgs/:orgId/allocations', async (req, res) => {
+  const { count } = req.body
+  if (!count || parseInt(count) < 1) return res.status(400).json({ error: 'count must be at least 1' })
+  const allocation = await allocSvc.createAllocation(req.params.orgId, parseInt(count))
+  res.status(201).json({ success: true, allocation })
+})
+
+// GET /api/super/orgs/:orgId/allocations/:allocationId/export/:mode — download allocation ZIP
+router.get('/orgs/:orgId/allocations/:allocationId/export/:mode', async (req, res) => {
+  const { orgId, allocationId, mode } = req.params
+  if (!['designed', 'plain'].includes(mode)) {
+    return res.status(400).json({ error: 'mode must be designed or plain' })
+  }
+  const buffer = await allocSvc.exportAllocation(allocationId, orgId, mode)
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader('Content-Disposition', `attachment; filename="alloc-${allocationId.slice(0,8)}-${mode}.zip"`)
+  res.send(buffer)
+})
+
+// GET /api/super/orgs/:orgId/batches — org admin's batches (read-only view for super admin)
+router.get('/orgs/:orgId/batches', async (req, res) => {
+  const { page, limit, search, status } = req.query
+  const result = await batchSvc.getBatches(req.params.orgId, {
+    page: parseInt(page) || 1,
+    limit: parseInt(limit) || 20,
+    search, status,
+  })
+  res.json(result)
 })
 
 // GET /api/super/withdrawals

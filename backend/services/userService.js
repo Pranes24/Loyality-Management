@@ -64,7 +64,7 @@ async function getScanHistory(userId, orgId, { page = 1, limit = 20 } = {}) {
   const offset = (page - 1) * limit
   const [dataRes, countRes] = await Promise.all([
     pool.query(`
-      SELECT sh.*, q.amount AS qr_amount
+      SELECT sh.*, q.amount AS qr_amount, q.qr_number
       FROM scan_history sh
       LEFT JOIN qr_codes q ON sh.qr_id = q.id
       JOIN batches b ON sh.batch_id = b.id

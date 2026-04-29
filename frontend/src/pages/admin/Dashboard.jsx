@@ -1,7 +1,7 @@
 // Admin dashboard — animated stat cards + live activity feed + recent batches
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LayoutDashboard, PackagePlus, QrCode, Users, Wallet, TrendingUp, Clock, ArrowRight, Activity, Zap } from 'lucide-react'
+import { LayoutDashboard, PackagePlus, QrCode, Users, Wallet, TrendingUp, Clock, ArrowRight, Activity, Zap, Layers } from 'lucide-react'
 import AdminLayout  from '../../components/admin/AdminLayout'
 import StatCard     from '../../components/admin/StatCard'
 import StatusBadge  from '../../components/admin/StatusBadge'
@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [summary,  setSummary]  = useState(null)
   const [activity, setActivity] = useState([])
   const [batches,  setBatches]  = useState([])
+  const [quota,    setQuota]    = useState(null)
   const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
@@ -44,10 +45,12 @@ export default function Dashboard() {
       api.get('/stats/summary'),
       api.get('/stats/recent'),
       api.get('/batch/list?limit=5'),
-    ]).then(([s, a, b]) => {
+      api.get('/batch/quota'),
+    ]).then(([s, a, b, q]) => {
       setSummary(s)
       setActivity(a.activity || [])
       setBatches(b.batches  || [])
+      setQuota(q)
     }).finally(() => setLoading(false))
   }, [])
 
@@ -88,6 +91,58 @@ export default function Dashboard() {
         <div className="float-in-3"><StatCard loading={loading} label="QRs Redeemed"      value={summary?.qrCodes?.redeemed || 0}       icon={TrendingUp} /></div>
         <div className="float-in-4"><StatCard loading={loading} label="In Wallets"        value={summary?.qrCodes?.walletCredited || 0} icon={Wallet}     /></div>
       </div>
+
+      {/* QR Quota banner */}
+      {(loading || quota) && (() => {
+        const used      = quota?.qr_used      || 0
+        const total     = quota?.qr_quota     || 0
+        const remaining = quota?.qr_remaining ?? 0
+        const pct       = total > 0 ? Math.round((used / total) * 100) : 0
+        const barColor  = pct >= 95 ? '#ef4444' : pct >= 80 ? '#f59e0b' : '#22d3ee'
+        const textColor = pct >= 95 ? 'text-red-400' : pct >= 80 ? 'text-amber-400' : 'text-cyan-400'
+        return (
+          <div className="float-in-4 mb-8 bg-[#111827] border border-[#1c2d42] rounded-2xl px-5 py-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg" style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.15)' }}>
+                  <Layers size={13} className="text-cyan-400" />
+                </div>
+                <span className="text-sm font-barlow font-bold text-white uppercase tracking-wide">QR Quota</span>
+              </div>
+              {loading
+                ? <div className="shimmer-bg h-4 w-32 rounded" />
+                : total === 0
+                ? <span className="text-[11px] font-mono text-slate-500">Not assigned — contact Super Admin</span>
+                : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-mono text-slate-400">
+                      <span className={`font-black ${textColor}`}>{remaining.toLocaleString('en-IN')}</span> remaining
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-600">
+                      {used.toLocaleString('en-IN')} / {total.toLocaleString('en-IN')} used
+                    </span>
+                  </div>
+                )
+              }
+            </div>
+            {loading
+              ? <div className="shimmer-bg h-2 w-full rounded-full" />
+              : total === 0
+              ? (
+                <div className="h-2 rounded-full bg-[#1c2d42]" />
+              )
+              : (
+                <div className="h-2 rounded-full bg-[#1c2d42] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${pct}%`, background: barColor, boxShadow: `0 0 8px ${barColor}40` }}
+                  />
+                </div>
+              )
+            }
+          </div>
+        )
+      })()}
 
       {/* Bottom panels */}
       <div className="grid lg:grid-cols-2 gap-5">

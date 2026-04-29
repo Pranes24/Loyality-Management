@@ -3,6 +3,36 @@ const express = require('express')
 const router  = express.Router()
 const svc     = require('../services/redeemService')
 
+// POST /api/redeem/by-short-id — manual entry using the 8-char ID printed on the sticker
+// Body: { short_id }  — no org_code needed; UUID prefix is globally unique
+// Returns { valid: true, qr_id } on success
+router.post('/by-short-id', async (req, res) => {
+  const { short_id } = req.body
+  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown'
+
+  const result = await svc.lookupQRByShortId(short_id, ip)
+  if (!result.valid) {
+    const statusCode = result.error === 'QR_NOT_FOUND' ? 404 : 409
+    return res.status(statusCode).json({ valid: false, error: result.error, message: result.message, expiresAt: result.expiresAt })
+  }
+  res.json({ valid: true, qr_id: result.qr_id, message: result.message })
+})
+
+// POST /api/redeem/by-number — manual entry fallback for damaged QR stickers (US-052, US-053)
+// Body: { org_code, qr_number }
+// On success returns { valid: true, qr_id } — caller feeds qr_id into the normal OTP flow
+router.post('/by-number', async (req, res) => {
+  const { org_code, qr_number } = req.body
+  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown'
+
+  const result = await svc.lookupQRByNumber(org_code, qr_number, ip)
+  if (!result.valid) {
+    const statusCode = result.error === 'QR_NOT_FOUND' ? 404 : 409
+    return res.status(statusCode).json({ valid: false, error: result.error, message: result.message, expiresAt: result.expiresAt })
+  }
+  res.json({ valid: true, qr_id: result.qr_id, message: result.message })
+})
+
 // GET /api/redeem/:qrId/check — instant QR validation on scan
 router.get('/:qrId/check', async (req, res) => {
   const result = await svc.checkQR(req.params.qrId)

@@ -1,7 +1,7 @@
 # User Stories Index
 **Project:** Loyalty Management System  
-**Total Stories:** 46  
-**Last Updated:** 2026-04-07
+**Total Stories:** 55  
+**Last Updated:** 2026-04-13
 
 ---
 
@@ -95,14 +95,49 @@
 | [US-045](./US-045.md) | Admin Panel Responsive Layout | P2 |
 | [US-046](./US-046.md) | QR Validation Error Pages | P1 |
 
+## Epic 12 — QR Quota Management
+| Story | Title | Priority | Phase |
+|-------|-------|----------|-------|
+| [US-047](./US-047.md) | Super Admin — Set QR Quota for Organisation | P1 | 4 |
+| [US-048](./US-048.md) | Org Admin — View QR Quota Usage | P1 | 5 |
+| [US-049](./US-049.md) | Batch Creation — Quota Validation | P1 | 2 |
+| [US-051](./US-051.md) | Super Admin — Adjust Org QR Quota | P2 | 4 |
+
+## Epic 13 — Sequential QR Numbering & Manual Entry
+| Story | Title | Priority | Phase |
+|-------|-------|----------|-------|
+| [US-050](./US-050.md) | System — Sequential QR Numbers (Org-Wide) | P1 | 1+2 |
+| [US-052](./US-052.md) | User — Manual QR Number Entry (Damaged QR) | P1 | 3+6 |
+| [US-053](./US-053.md) | System — Manual Entry Validation & Rate Limiting | P1 | 3 |
+| [US-055](./US-055.md) | Org Admin — QR Number Visible in Admin Panel | P1 | 6 |
+
+## Epic 14 — Enterprise Sticker Design
+| Story | Title | Priority | Phase |
+|-------|-------|----------|-------|
+| [US-054](./US-054.md) | Enterprise QR Sticker Design — Layout & Branding | P1 | 7 |
+
+---
+
+## Implementation Phases (QR Quota + Sequential Numbers)
+| Phase | Work | Stories |
+|-------|------|---------|
+| **1** | DB migration: `qr_quota` on orgs, `qr_number` on qr_codes | US-047, US-050 |
+| **2** | Backend: quota check + sequential number assignment in batch creation | US-049, US-050 |
+| **3** | Backend: manual redemption endpoint + rate limiting | US-052, US-053 |
+| **4** | Backend: super admin quota set/adjust APIs | US-047, US-051 |
+| **5** | Frontend: quota display on org admin dashboard + batch form | US-048, US-049 |
+| **6** | Frontend: QR numbers in admin panel tables + manual entry screen | US-052, US-055 |
+| **7** | Sticker design: left branding + right QR + number | US-054 |
+| **8** | User app: manual entry screen | US-052 |
+
 ---
 
 ## Summary
 | Priority | Count |
 |----------|-------|
-| P1 — Must Have | 41 |
-| P2 — Should Have | 5 |
-| **Total** | **46** |
+| P1 — Must Have | 49 |
+| P2 — Should Have | 6 |
+| **Total** | **55** |
 
 ## Suggested Developer Split
 | Developer | Stories |
@@ -112,3 +147,5 @@
 | Dev 3 — Admin Frontend | US-001 to US-008 |
 | Dev 4 — Admin Reports | US-009 to US-016 |
 | Dev 5 — User Frontend | US-026 to US-030, US-035, US-036, US-044 to US-046 |
+| Dev 6 — QR Quota Backend | US-047, US-049, US-050, US-051, US-052, US-053 |
+| Dev 7 — QR Quota Frontend | US-048, US-054, US-055 |

@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, PackagePlus, Layers, Users,
-  Wallet, Menu, X, QrCode, Zap, ChevronRight, LogOut
+  Wallet, Menu, X, QrCode, Zap, ChevronRight, LogOut, Palette
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -21,6 +21,12 @@ const NAV_SECTIONS = [
     items: [
       { to: '/admin/users',  icon: Users,  label: 'Users',  end: false },
       { to: '/admin/wallet', icon: Wallet, label: 'Wallet', end: false },
+    ]
+  },
+  {
+    label: 'Branding',
+    items: [
+      { to: '/admin/sticker-design', icon: Palette, label: 'Sticker Design', end: true },
     ]
   }
 ]

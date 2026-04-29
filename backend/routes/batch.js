@@ -6,6 +6,24 @@ const svc = require('../services/batchService')
 
 router.use(requireOrgAdmin)
 
+// GET /api/batch/quota — quota usage for the org admin's organisation (US-048)
+router.get('/quota', async (req, res) => {
+  const quota = await svc.getOrgQuota(req.orgId)
+  res.json(quota)
+})
+
+// GET /api/batch/sticker-config — get org's sticker design config
+router.get('/sticker-config', async (req, res) => {
+  const config = await svc.getStickerConfig(req.orgId)
+  res.json(config)
+})
+
+// PATCH /api/batch/sticker-config — save org's sticker design config
+router.patch('/sticker-config', async (req, res) => {
+  const config = await svc.updateStickerConfig(req.orgId, req.body)
+  res.json({ success: true, config })
+})
+
 // POST /api/batch/create
 router.post('/create', async (req, res) => {
   const { name, product_name, qr_count } = req.body
@@ -72,15 +90,6 @@ router.patch('/:id/status', async (req, res) => {
   res.json({ success: true, batch })
 })
 
-// GET /api/batch/:id/export
-router.get('/:id/export', async (req, res) => {
-  const batch = await svc.getBatchById(req.params.id, req.orgId)
-  if (!batch) return res.status(404).json({ error: 'Batch not found' })
-
-  const zipBuffer = await svc.exportBatchQRs(req.params.id, req.orgId)
-  res.setHeader('Content-Type', 'application/zip')
-  res.setHeader('Content-Disposition', `attachment; filename="${batch.batch_code}-qrcodes.zip"`)
-  res.send(zipBuffer)
-})
+// NOTE: QR export is super-admin only — use GET /api/super/batches/:id/export/:mode
 
 module.exports = router

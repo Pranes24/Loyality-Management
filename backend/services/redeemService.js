@@ -2,6 +2,7 @@
 const pool       = require('../db/pool')
 const getAdmin   = require('../lib/firebaseAdmin')
 const { debitAdminWallet } = require('./walletService')
+const limiter    = require('../utils/rateLimiter')
 
 /**
  * Validates a QR code on scan — checks all block conditions
@@ -203,4 +204,167 @@ async function submitRedemption(qrId, userId, action, data) {
   }
 }
 
-module.exports = { checkQR, verifyFirebaseToken, confirmScan, submitRedemption }
+/**
+ * Resolves a QR code by org_code + qr_number (manual entry fallback for damaged QR stickers).
+ * Applies rate limiting and writes an audit log entry.
+ * Returns the same shape as checkQR so the caller can hand off qr_id to the normal flow.
+ * @param {string} orgCode   - e.g. "TESTORG"
+ * @param {number} qrNumber  - the printed sequential number on the sticker
+ * @param {string} ip        - caller's IP address (for rate limiting)
+ * @returns {Promise<{valid: boolean, qr_id?: string, error?: string, message: string}>}
+ */
+async function lookupQRByNumber(orgCode, qrNumber, ip) {
+  // ── Input validation ────────────────────────────────────────────────────────
+  const num = parseInt(qrNumber, 10)
+  if (!orgCode || typeof orgCode !== 'string' || !orgCode.trim()) {
+    await writeAudit(ip, orgCode || '', 0, 'invalid_input')
+    throw Object.assign(new Error('org_code is required'), { status: 400 })
+  }
+  if (!Number.isInteger(num) || num < 1) {
+    await writeAudit(ip, orgCode, num || 0, 'invalid_input')
+    throw Object.assign(new Error('qr_number must be a positive integer'), { status: 400 })
+  }
+
+  // ── Rate limit check (before DB hit) ────────────────────────────────────────
+  try {
+    limiter.checkLimit(ip, orgCode)
+  } catch (err) {
+    await writeAudit(ip, orgCode, num, 'rate_limited')
+    throw err
+  }
+
+  // ── Resolve org ─────────────────────────────────────────────────────────────
+  const orgRes = await pool.query(
+    'SELECT id FROM organizations WHERE org_code = $1 AND status = $2',
+    [orgCode.trim().toUpperCase(), 'active']
+  )
+  if (!orgRes.rows.length) {
+    limiter.recordFailure(ip, orgCode)
+    await writeAudit(ip, orgCode, num, 'not_found')
+    // Return same not-found shape — don't reveal whether org_code is unknown
+    return { valid: false, error: 'QR_NOT_FOUND', message: 'QR number not found for this organisation' }
+  }
+  const orgId = orgRes.rows[0].id
+
+  // ── Resolve QR code by sequential number ────────────────────────────────────
+  const qrRes = await pool.query(`
+    SELECT q.*, b.status AS batch_status, b.name AS batch_name,
+           b.product_name, b.batch_code, b.id AS batch_uuid, b.org_id
+    FROM qr_codes q
+    JOIN batches b ON q.batch_id = b.id
+    WHERE q.org_id = $1 AND q.qr_number = $2
+  `, [orgId, num])
+
+  if (!qrRes.rows.length) {
+    limiter.recordFailure(ip, orgCode)
+    await writeAudit(ip, orgCode, num, 'not_found')
+    return { valid: false, error: 'QR_NOT_FOUND', message: 'QR number not found for this organisation' }
+  }
+
+  const qr = qrRes.rows[0]
+
+  // ── Run same validation checks as checkQR ────────────────────────────────────
+  if (qr.batch_status === 'draft' || qr.status === 'generated') {
+    limiter.recordFailure(ip, orgCode)
+    await writeAudit(ip, orgCode, num, 'invalid_state')
+    return { valid: false, error: 'QR_NOT_ACTIVATED', message: 'This QR code is not activated yet. Please check back later.' }
+  }
+  if (qr.batch_status === 'paused') {
+    limiter.recordFailure(ip, orgCode)
+    await writeAudit(ip, orgCode, num, 'invalid_state')
+    return { valid: false, error: 'BATCH_PAUSED', message: 'This offer is currently paused. Please try again later.' }
+  }
+  if (qr.expires_at && new Date(qr.expires_at) < new Date()) {
+    limiter.recordFailure(ip, orgCode)
+    await writeAudit(ip, orgCode, num, 'invalid_state')
+    return { valid: false, error: 'QR_EXPIRED', message: 'This QR code has expired', expiresAt: qr.expires_at }
+  }
+  const usedStatuses = ['scanning', 'redeemed', 'wallet_credited', 'pending_reason']
+  if (usedStatuses.includes(qr.status)) {
+    limiter.recordFailure(ip, orgCode)
+    await writeAudit(ip, orgCode, num, 'invalid_state')
+    return { valid: false, error: 'QR_ALREADY_USED', message: 'This QR code has already been used' }
+  }
+
+  // ── Success ──────────────────────────────────────────────────────────────────
+  limiter.clearFailures(ip, orgCode)
+  await writeAudit(ip, orgCode, num, 'success')
+  // Return only qr_id — caller hands it to the normal OTP → confirm → submit flow
+  return { valid: true, qr_id: qr.id, message: 'QR is valid. Proceed to OTP.' }
+}
+
+/**
+ * Resolves a QR code by the 8-character short ID printed on the sticker.
+ * No org code required — UUID prefix is globally unique.
+ * @param {string} shortId  - first 8 hex chars of the QR UUID (case-insensitive)
+ * @param {string} ip       - caller's IP (for rate limiting)
+ * @returns {Promise<{valid: boolean, qr_id?: string, error?: string, message: string}>}
+ */
+async function lookupQRByShortId(shortId, ip) {
+  const id = (shortId || '').trim().toLowerCase()
+  if (!id || !/^[0-9a-f]{8}$/.test(id)) {
+    await writeAudit(ip, id || 'INVALID', 0, 'invalid_input')
+    throw Object.assign(new Error('Short ID must be exactly 8 hex characters (printed on the sticker)'), { status: 400 })
+  }
+
+  try {
+    limiter.checkLimit(ip, id)
+  } catch (err) {
+    await writeAudit(ip, id, 0, 'rate_limited')
+    throw err
+  }
+
+  const qrRes = await pool.query(`
+    SELECT q.*, b.status AS batch_status, b.name AS batch_name,
+           b.product_name, b.batch_code, b.id AS batch_uuid, b.org_id
+    FROM qr_codes q
+    JOIN batches b ON q.batch_id = b.id
+    WHERE LEFT(q.id::text, 8) = $1
+  `, [id])
+
+  if (!qrRes.rows.length) {
+    limiter.recordFailure(ip, id)
+    await writeAudit(ip, id, 0, 'not_found')
+    return { valid: false, error: 'QR_NOT_FOUND', message: 'No QR code found for this ID' }
+  }
+
+  const qr = qrRes.rows[0]
+
+  if (qr.batch_status === 'draft' || qr.status === 'generated') {
+    limiter.recordFailure(ip, id)
+    await writeAudit(ip, id, 0, 'invalid_state')
+    return { valid: false, error: 'QR_NOT_ACTIVATED', message: 'This QR code is not activated yet. Please check back later.' }
+  }
+  if (qr.batch_status === 'paused') {
+    limiter.recordFailure(ip, id)
+    await writeAudit(ip, id, 0, 'invalid_state')
+    return { valid: false, error: 'BATCH_PAUSED', message: 'This offer is currently paused. Please try again later.' }
+  }
+  if (qr.expires_at && new Date(qr.expires_at) < new Date()) {
+    limiter.recordFailure(ip, id)
+    await writeAudit(ip, id, 0, 'invalid_state')
+    return { valid: false, error: 'QR_EXPIRED', message: 'This QR code has expired', expiresAt: qr.expires_at }
+  }
+  const usedStatuses = ['scanning', 'redeemed', 'wallet_credited', 'pending_reason']
+  if (usedStatuses.includes(qr.status)) {
+    limiter.recordFailure(ip, id)
+    await writeAudit(ip, id, 0, 'invalid_state')
+    return { valid: false, error: 'QR_ALREADY_USED', message: 'This QR code has already been used' }
+  }
+
+  limiter.clearFailures(ip, id)
+  await writeAudit(ip, id, 0, 'success')
+  return { valid: true, qr_id: qr.id, message: 'QR is valid. Proceed to OTP.' }
+}
+
+/** Writes one row to manual_entry_audit — fire-and-forget, never throws */
+async function writeAudit(ip, orgCode, qrNumber, result) {
+  try {
+    await pool.query(
+      'INSERT INTO manual_entry_audit (ip, org_code, qr_number, result) VALUES ($1,$2,$3,$4)',
+      [ip, orgCode, qrNumber, result]
+    )
+  } catch (_) { /* non-critical — never block the caller */ }
+}
+
+module.exports = { checkQR, verifyFirebaseToken, confirmScan, submitRedemption, lookupQRByNumber, lookupQRByShortId }

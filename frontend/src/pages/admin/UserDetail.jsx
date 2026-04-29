@@ -140,17 +140,17 @@ export default function UserDetail() {
       {tab === 'scans' && (
         <div className="bg-[#111827] border border-[#1c2d42] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[560px]">
+            <table className="w-full text-sm min-w-[620px]">
               <thead>
                 <tr className="border-b border-[#1c2d42]" style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
-                  {['Date', 'Product', 'Batch', 'Amount', 'Action', 'Details'].map(h => (
+                  {['QR No.', 'Date', 'Product', 'Batch', 'Amount', 'Action', 'Details'].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1c2d42]">
                 {history.length === 0
-                  ? <tr><td colSpan={6} className="px-5 py-14 text-center">
+                  ? <tr><td colSpan={7} className="px-5 py-14 text-center">
                       <div className="w-12 h-12 rounded-2xl bg-[#1c2d42] flex items-center justify-center mx-auto mb-3">
                         <QrCode size={20} className="text-slate-600" />
                       </div>
@@ -160,6 +160,9 @@ export default function UserDetail() {
                       const cfg = ACTION_STYLES[h.action] || {}
                       return (
                         <tr key={h.id} className="table-row-hover">
+                          <td className="px-5 py-3 font-mono text-[11px] text-cyan-400 font-bold whitespace-nowrap">
+                            {h.qr_number ? `No. ${String(h.qr_number).padStart(6, '0')}` : '—'}
+                          </td>
                           <td className="px-5 py-3 text-[11px] text-slate-400 font-mono">{fmtDate(h.scanned_at)}</td>
                           <td className="px-5 py-3 text-sm text-white">{h.product_name}</td>
                           <td className="px-5 py-3 font-mono text-[11px] text-slate-400">{h.batch_code}</td>

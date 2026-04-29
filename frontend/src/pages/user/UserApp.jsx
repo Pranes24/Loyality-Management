@@ -38,14 +38,90 @@ function StatCard({ label, value, icon: Icon, color }) {
   )
 }
 
+// ── Manual entry (damaged QR fallback) ────────────────────────────────────────
+function ManualEntryForm({ onScan, onBack }) {
+  const [shortId,  setShortId]  = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState('')
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const id = shortId.trim().toLowerCase()
+    if (!id) return setError('Please enter the ID from your sticker')
+    if (!/^[0-9a-f]{8}$/i.test(id)) return setError('ID must be exactly 8 characters (letters A–F and numbers 0–9)')
+    setLoading(true); setError('')
+    try {
+      const res = await api.post('/redeem/by-short-id', { short_id: id })
+      if (res.valid) onScan(res.qr_id)
+      else setError(res.message || 'QR not found')
+    } catch (err) {
+      setError(err.message || err.error || 'Lookup failed. Please try again.')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px] px-6 py-10">
+      <div className="w-full max-w-sm">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-6">
+          <span>←</span> Back to scanner
+        </button>
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 mx-auto"
+             style={{ background: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.2)' }}>
+          <QrCode size={28} className="text-cyan-400" />
+        </div>
+        <h2 className="text-xl font-barlow font-black text-white uppercase tracking-wide text-center mb-1">Enter Sticker ID</h2>
+        <p className="text-slate-400 text-sm text-center mb-6 leading-relaxed">
+          Type the 8-character ID printed at the bottom of the sticker (e.g. <span className="font-mono text-cyan-400">A1B2C3D4</span>).
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-2">
+              Sticker ID (printed below QR)
+            </label>
+            <input
+              value={shortId}
+              onChange={e => { setShortId(e.target.value.toUpperCase()); setError('') }}
+              placeholder="e.g. A1B2C3D4"
+              maxLength={8}
+              autoCapitalize="characters"
+              className="w-full bg-[#0c1422] border border-[#1c2d42] text-white placeholder-slate-600
+                         rounded-xl px-4 py-3 text-lg font-mono tracking-[0.3em] text-center
+                         focus:outline-none focus:border-cyan-500/50 transition-all"
+            />
+            <p className="text-[10px] font-mono text-slate-600 mt-1 text-center">
+              {shortId.length}/8 characters
+            </p>
+          </div>
+          {error && (
+            <p className="text-red-400 text-sm font-medium bg-red-500/8 border border-red-500/15 rounded-xl px-4 py-2.5">
+              {error}
+            </p>
+          )}
+          <button type="submit" disabled={loading || shortId.length !== 8}
+            className="w-full py-3.5 rounded-2xl font-barlow font-black uppercase tracking-wide text-sm disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #22d3ee, #0891b2)', color: '#000', boxShadow: '0 4px 16px rgba(34,211,238,0.25)' }}>
+            {loading
+              ? <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin mx-auto" />
+              : 'Find & Claim Reward'
+            }
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── QR scanner ────────────────────────────────────────────────────────────────
 function ScannerTab({ onScan }) {
   const videoRef  = useRef(null)
   const canvasRef = useRef(null)
   const rafRef    = useRef(null)
-  const [active,  setActive]  = useState(false)
-  const [scanned, setScanned] = useState(null)
-  const [error,   setError]   = useState('')
+  const [active,   setActive]   = useState(false)
+  const [scanned,  setScanned]  = useState(null)
+  const [error,    setError]    = useState('')
+  const [manual,   setManual]   = useState(false)
+
+  if (manual) return <ManualEntryForm onScan={onScan} onBack={() => setManual(false)} />
 
   async function startCamera() {
     setError(''); setScanned(null)
@@ -102,6 +178,10 @@ function ScannerTab({ onScan }) {
             className="px-8 py-3.5 rounded-2xl font-barlow font-black uppercase tracking-wide text-black text-sm"
             style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', boxShadow: '0 8px 24px rgba(245,158,11,0.35)' }}>
             Open Camera
+          </button>
+          <button onClick={() => setManual(true)}
+            className="mt-4 text-sm text-slate-500 hover:text-cyan-400 transition-colors font-medium underline underline-offset-2">
+            QR damaged? Enter number manually
           </button>
         </>
       )}

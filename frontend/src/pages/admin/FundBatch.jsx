@@ -5,18 +5,21 @@ import { ArrowLeft, Zap, Plus, Trash2, AlertCircle, BarChart3 } from 'lucide-rea
 import AdminLayout from '../../components/admin/AdminLayout'
 import api         from '../../lib/api'
 
-const EMPTY_TIER = { qty: '', amount: '' }
+const EMPTY_TIER = { pct: '', amount: '' }
 
-// Simple deterministic distribution for preview
-function buildDistribution(total) {
-  if (!total || isNaN(total)) return null
+// Simple deterministic distribution preview for auto mode
+function buildDistribution(total, qrCount) {
+  if (!total || isNaN(total) || !qrCount) return null
   const t = parseInt(total)
-  if (t < 500 || t > 7500) return null
-  const amounts = Array(500).fill(1)
-  let rem = t - 500
+  const n = parseInt(qrCount)
+  const min = n * 1
+  const max = n * 15
+  if (t < min || t > max) return null
+  const amounts = Array(n).fill(1)
+  let rem = t - n
   const seed = t % 97
-  for (let i = 0; rem > 0 && i < 50000; i++) {
-    const idx = (i * 37 + seed) % 500
+  for (let i = 0; rem > 0 && i < n * 100; i++) {
+    const idx = (i * 37 + seed) % n
     if (amounts[idx] < 15) { amounts[idx]++; rem-- }
   }
   const dist = {}
@@ -31,6 +34,11 @@ function barColor(amt) {
   if (v >= 7)  return '#f97316'
   if (v >= 4)  return '#fb923c'
   return '#475569'
+}
+
+// Convert percentage → actual QR count, flooring to whole number
+function pctToQty(pct, qrCount) {
+  return Math.floor((parseFloat(pct) || 0) / 100 * qrCount)
 }
 
 export default function FundBatch() {
@@ -54,18 +62,28 @@ export default function FundBatch() {
       .catch(() => navigate('/admin'))
   }, [id])
 
-  const preview  = useMemo(() => mode === 'auto' ? buildDistribution(total) : null, [total, mode])
+  const qrCount = parseInt(batch?.qr_count) || 500
+
+  const preview  = useMemo(() => mode === 'auto' ? buildDistribution(total, qrCount) : null, [total, mode, qrCount])
   const maxCount = preview ? Math.max(...Object.values(preview)) : 1
 
   function addTier()           { setTiers(t => [...t, { ...EMPTY_TIER }]) }
   function removeTier(i)       { setTiers(t => t.filter((_, idx) => idx !== i)) }
   function updateTier(i, k, v) {
+    if (k === 'pct') {
+      // Cap so running total never exceeds 100
+      const otherPct = tiers.reduce((s, t, idx) => s + (idx !== i ? parseFloat(t.pct) || 0 : 0), 0)
+      const maxAllowed = Math.max(0, 100 - otherPct)
+      v = String(Math.min(parseFloat(v) || 0, maxAllowed))
+    }
     setTiers(t => t.map((tier, idx) => idx === i ? { ...tier, [k]: v } : tier))
     setError('')
   }
 
-  const tierQtyTotal = tiers.reduce((s, t) => s + (parseInt(t.qty) || 0), 0)
-  const tierTotal    = tiers.reduce((s, t) => s + (parseInt(t.qty) || 0) * (parseInt(t.amount) || 0), 0)
+  // Sum of percentages across all tiers
+  const tierPctTotal = tiers.reduce((s, t) => s + (parseFloat(t.pct) || 0), 0)
+  // Total ₹ value based on computed QR counts
+  const tierTotal    = tiers.reduce((s, t) => s + pctToQty(t.pct, qrCount) * (parseInt(t.amount) || 0), 0)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -73,12 +91,18 @@ export default function FundBatch() {
     if (!total || isNaN(total)) return setError('Total amount is required')
     if (!expires)               return setError('Expiry date is required')
     if (mode === 'manual') {
-      if (tierQtyTotal > 500)          return setError('Total QR quantity across tiers cannot exceed 500')
+      if (tierPctTotal > 100) return setError('Total percentage across tiers cannot exceed 100%')
       if (tierTotal > parseInt(total)) return setError(`Tier total (₹${tierTotal}) exceeds the budget (₹${total})`)
+      const hasEmpty = tiers.some(t => !t.pct || !t.amount)
+      if (hasEmpty) return setError('All tiers must have a percentage and amount')
     }
     const payload = { dist_mode: mode, total_amount: parseInt(total), expires_at: expires }
     if (mode === 'manual') {
-      payload.tiers = tiers.map(t => ({ qty: parseInt(t.qty), amount: parseInt(t.amount) }))
+      // Convert percentages to actual QR counts before sending
+      payload.tiers = tiers.map(t => ({
+        qty:    pctToQty(t.pct, qrCount),
+        amount: parseInt(t.amount),
+      })).filter(t => t.qty > 0)
     }
     setLoading(true)
     try {
@@ -90,6 +114,9 @@ export default function FundBatch() {
   }
 
   if (!batch) return null
+
+  const minBudget = qrCount * 1
+  const maxBudget = qrCount * 15
 
   return (
     <AdminLayout>
@@ -137,11 +164,13 @@ export default function FundBatch() {
             <input
               type="number" value={total}
               onChange={e => { setTotal(e.target.value); setError('') }}
-              min={500} max={7500} placeholder="e.g. 1500"
+              min={minBudget} max={maxBudget} placeholder={`e.g. ${Math.round(qrCount * 3)}`}
               className="w-full bg-[#0c1422] border border-[#1c2d42] text-white placeholder-slate-600
                          rounded-xl px-4 py-3 text-sm input-focus focus:outline-none transition-all"
             />
-            <p className="text-[10px] text-slate-600 mt-1.5 font-mono">Min ₹500 · Max ₹7,500 · 500 QRs</p>
+            <p className="text-[10px] text-slate-600 mt-1.5 font-mono">
+              Min ₹{minBudget.toLocaleString('en-IN')} · Max ₹{maxBudget.toLocaleString('en-IN')} · {qrCount.toLocaleString('en-IN')} QRs
+            </p>
           </div>
           <div>
             <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-2">
@@ -165,7 +194,7 @@ export default function FundBatch() {
               <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500">Distribution Preview</p>
               {preview && (
                 <span className="ml-auto text-[10px] font-mono text-slate-600">
-                  ₹{total} across 500 QRs
+                  ₹{total} across {qrCount.toLocaleString('en-IN')} QRs
                 </span>
               )}
             </div>
@@ -175,12 +204,12 @@ export default function FundBatch() {
                 <div className="w-12 h-12 rounded-2xl bg-[#111827] flex items-center justify-center mx-auto mb-3">
                   <BarChart3 size={20} className="text-slate-600" />
                 </div>
-                <p className="text-sm text-slate-500">Enter a total budget (₹500–₹7,500) to preview</p>
+                <p className="text-sm text-slate-500">Enter a total budget to preview distribution</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {Object.entries(preview).sort(([a],[b]) => parseInt(a) - parseInt(b)).map(([amt, cnt]) => {
-                  const pct  = Math.round((cnt / 500) * 100)
+                  const pct  = Math.round((cnt / qrCount) * 100)
                   const barW = Math.round((cnt / maxCount) * 100)
                   const color = barColor(amt)
                   return (
@@ -195,7 +224,7 @@ export default function FundBatch() {
                                style={{ background: 'linear-gradient(90deg, transparent 40%, rgba(255,255,255,0.15))' }} />
                         </div>
                       </div>
-                      <span className="text-[10px] font-mono text-slate-500 w-20 text-right flex-shrink-0">{cnt} QRs ({pct}%)</span>
+                      <span className="text-[10px] font-mono text-slate-500 w-24 text-right flex-shrink-0">{cnt} QRs ({pct}%)</span>
                     </div>
                   )
                 })}
@@ -208,64 +237,81 @@ export default function FundBatch() {
         {mode === 'manual' && (
           <div className="float-in-3 bg-[#0c1422] border border-[#1c2d42] rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[360px]">
+            <table className="w-full text-sm min-w-[400px]">
               <thead>
                 <tr className="border-b border-[#1c2d42]"
                     style={{ background: 'linear-gradient(to right, rgba(245,158,11,0.03), transparent)' }}>
-                  {['Quantity', 'Amount / QR (₹)', 'Subtotal', ''].map(h => (
+                  {['% of QRs', 'Amount / QR (₹)', 'Subtotal', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-[0.1em] text-slate-500">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1c2d42]">
-                {tiers.map((tier, i) => (
-                  <tr key={i} className="table-row-hover">
-                    <td className="px-4 py-2.5">
-                      <input type="number" value={tier.qty} min={1}
-                        onChange={e => updateTier(i, 'qty', e.target.value)}
-                        placeholder="100"
-                        className="w-full bg-[#111827] border border-[#1c2d42] text-white rounded-lg px-3 py-2 text-sm
-                                   input-focus focus:outline-none transition-all" />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input type="number" value={tier.amount} min={1} max={15}
-                        onChange={e => updateTier(i, 'amount', e.target.value)}
-                        placeholder="5"
-                        className="w-full bg-[#111827] border border-[#1c2d42] text-white rounded-lg px-3 py-2 text-sm
-                                   input-focus focus:outline-none transition-all" />
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-sm">
-                      <span className={tier.qty && tier.amount ? 'text-amber-400 font-bold' : 'text-slate-600'}>
-                        {tier.qty && tier.amount ? `₹${parseInt(tier.qty) * parseInt(tier.amount)}` : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      {tiers.length > 1 && (
-                        <button type="button" onClick={() => removeTier(i)}
-                          className="p-1 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all">
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {tiers.map((tier, i) => {
+                  const computedQty = pctToQty(tier.pct, qrCount)
+                  const subtotal    = computedQty * (parseInt(tier.amount) || 0)
+                  return (
+                    <tr key={i} className="table-row-hover">
+                      <td className="px-4 py-2.5">
+                        <div className="relative">
+                          <input type="number" value={tier.pct} min={1} max={100} step={0.1}
+                            onChange={e => updateTier(i, 'pct', e.target.value)}
+                            placeholder="20"
+                            className="w-full bg-[#111827] border border-[#1c2d42] text-white rounded-lg pl-3 pr-8 py-2 text-sm
+                                       input-focus focus:outline-none transition-all" />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono">%</span>
+                        </div>
+                        {tier.pct > 0 && (
+                          <p className="text-[10px] font-mono text-slate-600 mt-1 pl-1">
+                            ≈ {computedQty.toLocaleString('en-IN')} QRs
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <input type="number" value={tier.amount} min={1} max={15}
+                          onChange={e => updateTier(i, 'amount', e.target.value)}
+                          placeholder="5"
+                          className="w-full bg-[#111827] border border-[#1c2d42] text-white rounded-lg px-3 py-2 text-sm
+                                     input-focus focus:outline-none transition-all" />
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-sm">
+                        <span className={tier.pct && tier.amount ? 'text-amber-400 font-bold' : 'text-slate-600'}>
+                          {tier.pct && tier.amount ? `₹${subtotal.toLocaleString('en-IN')}` : '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {tiers.length > 1 && (
+                          <button type="button" onClick={() => removeTier(i)}
+                            className="p-1 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
-
             </div>
+
             <div className="px-4 py-3 border-t border-[#1c2d42] flex items-center justify-between">
-              <button type="button" onClick={addTier}
-                className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-mono transition-colors">
+              <button type="button" onClick={addTier} disabled={tierPctTotal >= 100}
+                className="flex items-center gap-1.5 text-xs font-mono transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-amber-400 hover:text-amber-300 disabled:hover:text-amber-400">
                 <Plus size={13} /> Add Tier
               </button>
               <div className="text-right text-[11px] font-mono space-y-1">
                 <p className="text-slate-500">
-                  QRs: <span className={tierQtyTotal > 500 ? 'text-red-400 font-bold' : 'text-white'}>{tierQtyTotal}</span>
-                  <span className="text-slate-600"> / 500</span>
+                  Used: <span className={tierPctTotal > 100 ? 'text-red-400 font-bold' : 'text-white'}>
+                    {tierPctTotal.toFixed(1)}%
+                  </span>
+                  <span className="text-slate-600"> / 100%</span>
+                  <span className="text-slate-600 ml-1">
+                    (≈ {tiers.reduce((s,t) => s + pctToQty(t.pct, qrCount), 0).toLocaleString('en-IN')} / {qrCount.toLocaleString('en-IN')} QRs)
+                  </span>
                 </p>
                 <p className="text-slate-500">
-                  Total: <span className={total && tierTotal > parseInt(total) ? 'text-red-400 font-bold' : 'text-amber-400 font-bold'}>₹{tierTotal}</span>
-                  {total ? <span className="text-slate-600"> / ₹{total}</span> : ''}
+                  Total: <span className={total && tierTotal > parseInt(total) ? 'text-red-400 font-bold' : 'text-amber-400 font-bold'}>₹{tierTotal.toLocaleString('en-IN')}</span>
+                  {total ? <span className="text-slate-600"> / ₹{parseInt(total).toLocaleString('en-IN')}</span> : ''}
                 </p>
               </div>
             </div>
